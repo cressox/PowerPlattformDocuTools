@@ -2,7 +2,7 @@
 
 ## Aktualisierungsplan
 
-Tägliche Aktualisierung um 06:30 Uhr via Power BI Service Scheduled Refresh. SAP-Daten werden um 06:00 via Gateway geladen.
+Tägliche Aktualisierung um redacted-host:0000 Uhr via Power BI Service Scheduled Refresh. SAP-Daten werden um redacted-host:0000 via Gateway geladen.
 
 ## Monitoring
 

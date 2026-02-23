@@ -10,12 +10,12 @@ meta:
   environments:
   - name: DEV
     workspace: HR-Reports-DEV
-    url: https://app.powerbi.com/groups/dev-workspace-id
+    url: https://redacted.example
   - name: PROD
     workspace: HR-Reports-PROD
-    url: https://app.powerbi.com/groups/prod-workspace-id
-  powerbi_service_url: https://app.powerbi.com/groups/prod-workspace-id/reports/report-id
-  sharepoint_folder_url: https://contoso.sharepoint.com/sites/HR/Reports/Zeitkonten
+    url: https://redacted.example
+  powerbi_service_url: https://redacted.example
+  sharepoint_folder_url: https://redacted.example
 kpis:
 - id: kpi001
   name: Aufbau (Stunden)
@@ -56,11 +56,11 @@ data_sources:
 - id: ds001
   name: SAP HR – Zeitkonten-View
   source_type: SQL (SAP HANA)
-  connection_info: hana-host:30015 / Schema HR_REPORTING / View V_ZEITKONTEN
-  refresh_cadence: Täglich um 06:00 Uhr
+  connection_info: redacted-host:0000 / Schema HR_REPORTING / View V_ZEITKONTEN
+  refresh_cadence: Täglich um redacted-host:0000 Uhr
   gateway_required: true
   gateway_name: OnPrem-Gateway-HR
-  owner_contact: IT SAP Team (sap-team@contoso.de)
+  owner_contact: IT SAP Team (redacted@example.com)
 - id: ds002
   name: Organisationsstruktur (Excel)
   source_type: Excel (SharePoint)
@@ -68,7 +68,7 @@ data_sources:
   refresh_cadence: Wöchentlich (montags)
   gateway_required: false
   gateway_name: ''
-  owner_contact: HR Stammdaten (hr-stammdaten@contoso.de)
+  owner_contact: HR Stammdaten (redacted@example.com)
 - id: 2bda9550
   name: test
   source_type: test
@@ -84,7 +84,7 @@ power_queries:
   inputs: SAP HANA View V_ZEITKONTEN
   major_transformations: Filterung auf aktive Mitarbeiter, Typumwandlung Datumsspalten,
     Berechnung der ISO-Woche über Date.WeekOfYear, Entfernung von Testdatensätzen.
-  m_code: "let\n    Source = SapHana.Database(\"hana-host:30015\", [Implementation=\"\
+  m_code: "let\n    Source = SapHana.Database(\"redacted-host:0000\", [Implementation=\"\
     2.0\"]),\n    Schema = Source{[Schema=\"HR_REPORTING\"]}[Data],\n    View = Schema{[Name=\"\
     V_ZEITKONTEN\"]}[Data],\n    FilterActive = Table.SelectRows(View, each [Status]\
     \ = \"A\"),\n    AddISOWeek = Table.AddColumn(FilterActive, \"ISOWoche\",\n  \
@@ -244,8 +244,8 @@ report_pages:
   slicers_filters: Mitarbeiter (PersonalNr/Name), Datumsbereich
   notes: Erreichbar via Drillthrough von der Übersichtsseite.
 governance:
-  refresh_schedule: Tägliche Aktualisierung um 06:30 Uhr via Power BI Service Scheduled
-    Refresh. SAP-Daten werden um 06:00 via Gateway geladen.
+  refresh_schedule: Tägliche Aktualisierung um redacted-host:0000 Uhr via Power BI Service Scheduled
+    Refresh. SAP-Daten werden um redacted-host:0000 via Gateway geladen.
   monitoring_notes: Refresh-Fehler werden per E-Mail an den Report-Owner gesendet.
     Zusätzlich Überwachung im Power BI Admin Portal.
   rls_notes: 'RLS ist aktiviert: Teamleiter sehen nur Mitarbeiter ihrer Abteilung.

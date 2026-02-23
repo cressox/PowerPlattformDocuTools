@@ -64,3 +64,19 @@ htmlcov/
 
 # Generated project outputs
 **/data/output/
+
+# Sensitive/local project state and generated models
+**/data/app_model.json
+**/data/project.json
+**/data/project.yml
+**/data/images/
+**/data/screenshots/
+
+# Power Platform export artifacts (often contain internal metadata)
+**/*.msapp
+**/*.msapp.zip
+**/*.pbix
+
+# Local publish artifacts
+publish.log
+publish-report.json

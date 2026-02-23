@@ -14,10 +14,10 @@
 
 | Umgebung | Arbeitsbereich | URL |
 |---|---|---|
-| DEV | HR-Reports-DEV | https://app.powerbi.com/groups/dev-workspace-id |
-| PROD | HR-Reports-PROD | https://app.powerbi.com/groups/prod-workspace-id |
+| DEV | HR-Reports-DEV | https://redacted.example |
+| PROD | HR-Reports-PROD | https://redacted.example |
 
 ## Links
 
-- **Power BI Service:** https://app.powerbi.com/groups/prod-workspace-id/reports/report-id
-- **SharePoint-Ordner:** https://contoso.sharepoint.com/sites/HR/Reports/Zeitkonten
+- **Power BI Service:** https://redacted.example
+- **SharePoint-Ordner:** https://redacted.example

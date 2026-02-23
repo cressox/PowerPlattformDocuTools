@@ -14,7 +14,7 @@
 
 ```powerquery
 let
-    Source = SapHana.Database("hana-host:30015", [Implementation="2.0"]),
+    Source = SapHana.Database("redacted-host:0000", [Implementation="2.0"]),
     Schema = Source{[Schema="HR_REPORTING"]}[Data],
     View = Schema{[Name="V_ZEITKONTEN"]}[Data],
     FilterActive = Table.SelectRows(View, each [Status] = "A"),
