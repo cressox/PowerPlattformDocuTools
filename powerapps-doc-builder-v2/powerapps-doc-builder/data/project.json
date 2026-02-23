@@ -1,0 +1,37 @@
+{
+  "id": "258bd57e-362a-4c5d-9777-b91f5b1decaa",
+  "name": "Neues Projekt",
+  "created": "2026-02-20T17:25:30.039656+00:00",
+  "updated": "2026-02-23T08:43:18.003017+00:00",
+  "yaml_hash": "617df2a471495d84867fb2d42c14ff1d1905fe7e0a5dfb355c7b3cc324f6462f",
+  "screenshot_map": {},
+  "manual_notes": {
+    "purpose": "",
+    "intended_users": "",
+    "environments": "",
+    "roles": "",
+    "limitations": "",
+    "alm_notes": "",
+    "security_notes": "",
+    "connector_classification": ""
+  },
+  "change_log": [
+    {
+      "timestamp": "2026-02-20T17:25:30.159087+00:00",
+      "yaml_hash": "0999fd16005324bb91c77a2dd2904577e17edfeb47511f9aefc9c4390127f9a6",
+      "diff_summary": "~1 geänderte Bildschirme; 4 Formeländerungen",
+      "user_note": ""
+    },
+    {
+      "timestamp": "2026-02-23T08:43:17.954483+00:00",
+      "yaml_hash": "617df2a471495d84867fb2d42c14ff1d1905fe7e0a5dfb355c7b3cc324f6462f",
+      "diff_summary": "+8 Bildschirme; -1 Bildschirme; Konnektoren: +9/-0; 5129 Formeländerungen",
+      "user_note": ""
+    }
+  ],
+  "settings": {
+    "redact_ids": true,
+    "include_best_practice_checks": true,
+    "language": "de"
+  }
+}

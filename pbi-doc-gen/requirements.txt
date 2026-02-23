@@ -1,0 +1,10 @@
+# Power BI Documentation Generator – Dependencies
+#
+# pyyaml: YAML serialization for the project data file.
+#          Falls back to JSON if not installed, but YAML is strongly preferred
+#          for human readability and multi-line string support.
+pyyaml>=6.0
+
+# pytest: Optional – for running unit tests more conveniently.
+#         Tests also work with: python -m unittest tests/test_core.py
+pytest>=7.0

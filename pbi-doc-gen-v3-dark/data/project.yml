@@ -1,0 +1,298 @@
+meta:
+  report_name: HR Zeitkonten Report
+  short_description: >-
+    Übersicht über Zeitkonten (Aufbau, Abbau, Saldo) der Mitarbeitenden,
+    aufgeschlüsselt nach ISO-Wochen, Abteilungen und Kostenstellen.
+  audience: HR Business Partner, Teamleiter, Personalleitung
+  owner: Maria Schmidt
+  author: Thomas Müller
+  version: '1.0.0'
+  date: '2025-06-01'
+  environments:
+    - name: DEV
+      workspace: HR-Reports-DEV
+      url: https://app.powerbi.com/groups/dev-workspace-id
+    - name: PROD
+      workspace: HR-Reports-PROD
+      url: https://app.powerbi.com/groups/prod-workspace-id
+  powerbi_service_url: https://app.powerbi.com/groups/prod-workspace-id/reports/report-id
+  sharepoint_folder_url: https://contoso.sharepoint.com/sites/HR/Reports/Zeitkonten
+
+kpis:
+  - id: kpi001
+    name: Aufbau (Stunden)
+    business_description: >-
+      Gesamte aufgebaute Überstunden eines Mitarbeiters in der Betrachtungsperiode.
+    technical_definition: >-
+      SUM(FactZeitkonto[AufbauStunden]) – aggregiert pro Person und ISO-Woche.
+    granularity: ISO-Woche / Person
+    filters_context: Kann nach Abteilung, Kostenstelle, Standort gefiltert werden.
+    caveats: >-
+      Enthält keine Reisezeiten; Werte aus SAP HR können 1–2 Tage verzögert sein.
+
+  - id: kpi002
+    name: Abbau (Stunden)
+    business_description: >-
+      Gesamte abgebaute Überstunden (Gleitzeit, Freizeitausgleich) in der Periode.
+    technical_definition: >-
+      SUM(FactZeitkonto[AbbauStunden]) – aggregiert pro Person und ISO-Woche.
+    granularity: ISO-Woche / Person
+    filters_context: Kann nach Abteilung, Kostenstelle, Standort gefiltert werden.
+    caveats: ''
+
+  - id: kpi003
+    name: Saldo (Stunden)
+    business_description: >-
+      Aktueller Überstundensaldo = kumulierter Aufbau minus kumulierter Abbau.
+    technical_definition: >-
+      Laufende Summe: CALCULATE(SUM(FactZeitkonto[AufbauStunden]) - SUM(FactZeitkonto[AbbauStunden]),
+      FILTER(ALL(DimDatum), DimDatum[ISOWoche] <= MAX(DimDatum[ISOWoche])))
+    granularity: ISO-Woche / Person
+    filters_context: Stichtag-abhängig; bei Filterwechsel ändert sich der kumulative Saldo.
+    caveats: Korrekturbuchungen aus Vormonaten können den Saldo rückwirkend verändern.
+
+data_sources:
+  - id: ds001
+    name: SAP HR – Zeitkonten-View
+    source_type: SQL (SAP HANA)
+    connection_info: 'hana-host:30015 / Schema HR_REPORTING / View V_ZEITKONTEN'
+    refresh_cadence: Täglich um 06:00 Uhr
+    gateway_required: true
+    gateway_name: OnPrem-Gateway-HR
+    owner_contact: IT SAP Team (sap-team@contoso.de)
+
+  - id: ds002
+    name: Organisationsstruktur (Excel)
+    source_type: Excel (SharePoint)
+    connection_info: 'SharePoint: /sites/HR/Shared Documents/Org_Struktur.xlsx'
+    refresh_cadence: Wöchentlich (montags)
+    gateway_required: false
+    gateway_name: ''
+    owner_contact: HR Stammdaten (hr-stammdaten@contoso.de)
+
+power_queries:
+  - id: pq001
+    query_name: qry_FactZeitkonto
+    purpose: Zeitkontodaten aus SAP HANA laden und bereinigen
+    inputs: SAP HANA View V_ZEITKONTEN
+    major_transformations: >-
+      Filterung auf aktive Mitarbeiter, Typumwandlung Datumsspalten,
+      Berechnung der ISO-Woche über Date.WeekOfYear, Entfernung von Testdatensätzen.
+    m_code: |
+      let
+          Source = SapHana.Database("hana-host:30015", [Implementation="2.0"]),
+          Schema = Source{[Schema="HR_REPORTING"]}[Data],
+          View = Schema{[Name="V_ZEITKONTEN"]}[Data],
+          FilterActive = Table.SelectRows(View, each [Status] = "A"),
+          AddISOWeek = Table.AddColumn(FilterActive, "ISOWoche",
+              each Date.WeekOfYear([Buchungsdatum], Day.Monday), Int64.Type),
+          AddYearWeekKey = Table.AddColumn(AddISOWeek, "YearWeekKey",
+              each Date.Year([Buchungsdatum]) * 100 + [ISOWoche], Int64.Type)
+      in
+          AddYearWeekKey
+    output_table: FactZeitkonto
+    notes: >-
+      Join mit DimDatum über YearWeekKey; Join mit DimMitarbeiter über PersonalNr.
+
+  - id: pq002
+    query_name: qry_DimDatum
+    purpose: Datumsdimensionstabelle mit ISO-Wochen generieren
+    inputs: Generiert (kein externer Input)
+    major_transformations: >-
+      Kalender von 2020-01-01 bis 2026-12-31, ISO-Wochennummer,
+      ISO-Jahr, Quartal, Monatsname (deutsch).
+    m_code: |
+      let
+          StartDate = #date(2020, 1, 1),
+          EndDate = #date(2026, 12, 31),
+          DayCount = Duration.Days(EndDate - StartDate) + 1,
+          DateList = List.Dates(StartDate, DayCount, #duration(1,0,0,0)),
+          ToTable = Table.FromList(DateList, Splitter.SplitByNothing(), {"Datum"}),
+          TypeDate = Table.TransformColumnTypes(ToTable, {{"Datum", type date}}),
+          AddISOWeek = Table.AddColumn(TypeDate, "ISOWoche",
+              each Date.WeekOfYear([Datum], Day.Monday), Int64.Type),
+          AddYear = Table.AddColumn(AddISOWeek, "Jahr",
+              each Date.Year([Datum]), Int64.Type),
+          AddYearWeekKey = Table.AddColumn(AddYear, "YearWeekKey",
+              each [Jahr] * 100 + [ISOWoche], Int64.Type)
+      in
+          AddYearWeekKey
+    output_table: DimDatum
+    notes: ''
+
+data_model:
+  tables:
+    - name: FactZeitkonto
+      table_type: Fakt
+      description: Zeitkontobuchungen pro Mitarbeiter und Tag
+      keys: 'PK: PersonalNr + Buchungsdatum'
+    - name: DimDatum
+      table_type: Dimension
+      description: Kalender-Dimension mit ISO-Wochen
+      keys: 'PK: YearWeekKey'
+    - name: DimMitarbeiter
+      table_type: Dimension
+      description: Mitarbeiter-Stammdaten aus SAP HR
+      keys: 'PK: PersonalNr'
+    - name: DimAbteilung
+      table_type: Dimension
+      description: Organisationseinheiten / Abteilungen
+      keys: 'PK: AbteilungID'
+  relationships:
+    - from_table: FactZeitkonto
+      from_column: YearWeekKey
+      to_table: DimDatum
+      to_column: YearWeekKey
+      cardinality: 'N:1'
+      filter_direction: Single
+    - from_table: FactZeitkonto
+      from_column: PersonalNr
+      to_table: DimMitarbeiter
+      to_column: PersonalNr
+      cardinality: 'N:1'
+      filter_direction: Single
+    - from_table: DimMitarbeiter
+      from_column: AbteilungID
+      to_table: DimAbteilung
+      to_column: AbteilungID
+      cardinality: 'N:1'
+      filter_direction: Single
+  date_logic_notes: >-
+    ISO-Wochennummern nach DIN/ISO 8601. Woche beginnt am Montag.
+    YearWeekKey = Jahr * 100 + ISOWoche (z.B. 202523 = Woche 23, 2025).
+    Achtung: Kalenderwochen am Jahreswechsel (KW 52/53 → KW 1) müssen mit ISO-Jahr abgeglichen werden.
+  screenshot_paths:
+    - images/data_model_screenshot.png
+  notes: Star-Schema mit FactZeitkonto als zentraler Fakttabelle.
+
+measures:
+  - id: m001
+    name: Aufbau Stunden
+    display_folder: Zeitkonto
+    description: Summe der aufgebauten Überstunden
+    dax_code: |
+      Aufbau Stunden =
+      SUM( FactZeitkonto[AufbauStunden] )
+    dependencies: FactZeitkonto[AufbauStunden]
+    filter_context_notes: Reagiert auf alle Slicer (Datum, Abteilung, Person).
+    validation_notes: Vergleich mit SAP-Standardreport PT_BAL00.
+
+  - id: m002
+    name: Abbau Stunden
+    display_folder: Zeitkonto
+    description: Summe der abgebauten Überstunden
+    dax_code: |
+      Abbau Stunden =
+      SUM( FactZeitkonto[AbbauStunden] )
+    dependencies: FactZeitkonto[AbbauStunden]
+    filter_context_notes: ''
+    validation_notes: ''
+
+  - id: m003
+    name: Saldo Stunden
+    display_folder: Zeitkonto
+    description: Kumulierter Saldo (Aufbau – Abbau) bis zum ausgewählten Zeitpunkt
+    dax_code: |
+      Saldo Stunden =
+      CALCULATE(
+          [Aufbau Stunden] - [Abbau Stunden],
+          FILTER(
+              ALL( DimDatum ),
+              DimDatum[YearWeekKey] <= MAX( DimDatum[YearWeekKey] )
+          )
+      )
+    dependencies: '[Aufbau Stunden], [Abbau Stunden], DimDatum[YearWeekKey]'
+    filter_context_notes: >-
+      Verwendet ALL(DimDatum) für kumulative Berechnung.
+      Abteilungs-/Personen-Filter bleiben aktiv.
+    validation_notes: Stichprobenweise Prüfung gegen SAP-Saldoübersicht.
+
+  - id: m004
+    name: Saldo Vorwoche
+    display_folder: Zeitkonto
+    description: Saldo der Vorwoche für Vergleichszwecke
+    dax_code: |
+      Saldo Vorwoche =
+      CALCULATE(
+          [Saldo Stunden],
+          FILTER(
+              ALL( DimDatum ),
+              DimDatum[YearWeekKey] =
+                  MAXX( FILTER( ALL( DimDatum ), DimDatum[YearWeekKey] < MAX( DimDatum[YearWeekKey] ) ),
+                        DimDatum[YearWeekKey] )
+          )
+      )
+    dependencies: '[Saldo Stunden], DimDatum[YearWeekKey]'
+    filter_context_notes: Berechnet Saldo für die KW vor der aktuell ausgewählten KW.
+    validation_notes: ''
+
+report_pages:
+  - id: pg001
+    page_name: Übersicht
+    purpose: Management-Überblick über alle Zeitkonten-KPIs
+    visuals:
+      - name: KPI-Karten
+        description: Aufbau, Abbau, Saldo als große Zahlenkarten
+      - name: Saldo-Trend (Liniendiagramm)
+        description: Saldo über ISO-Wochen als Trendlinie
+      - name: Top 10 Mitarbeiter nach Saldo
+        description: Balkendiagramm der 10 höchsten Salden
+    slicers_filters: 'Datum (ISO-Woche), Abteilung, Standort'
+    notes: Drillthrough auf Detailseite pro Mitarbeiter verfügbar.
+
+  - id: pg002
+    page_name: Detail pro Mitarbeiter
+    purpose: Einzelansicht der Zeitkontobewegungen eines Mitarbeiters
+    visuals:
+      - name: Wöchentliche Bewegungen (Tabelle)
+        description: Aufbau, Abbau, Saldo pro ISO-Woche
+      - name: Saldo-Verlauf (Liniendiagramm)
+        description: Kumulierter Saldo über Zeit
+    slicers_filters: 'Mitarbeiter (PersonalNr/Name), Datumsbereich'
+    notes: Erreichbar via Drillthrough von der Übersichtsseite.
+
+governance:
+  refresh_schedule: >-
+    Tägliche Aktualisierung um 06:30 Uhr via Power BI Service Scheduled Refresh.
+    SAP-Daten werden um 06:00 via Gateway geladen.
+  monitoring_notes: >-
+    Refresh-Fehler werden per E-Mail an den Report-Owner gesendet.
+    Zusätzlich Überwachung im Power BI Admin Portal.
+  rls_notes: >-
+    RLS ist aktiviert: Teamleiter sehen nur Mitarbeiter ihrer Abteilung.
+    HR Business Partner sehen alle Abteilungen ihres Bereichs.
+    Rollen: Rolle_Teamleiter, Rolle_HRBP, Rolle_Admin.
+  performance_notes: >-
+    Bei >50.000 Zeitkontobuchungen kann die kumulative Saldo-Berechnung
+    langsam werden. Ggf. vorberechnete Saldo-Spalte in Power Query erwägen.
+  assumptions: >-
+    - SAP-Daten sind bis zum Vortag vollständig.
+    - Organisationsstruktur-Excel wird wöchentlich aktualisiert.
+    - ISO-Wochen folgen DIN/ISO 8601.
+  limitations: >-
+    - Reisezeiten sind nicht enthalten.
+    - Externe Mitarbeiter (Leiharbeit) sind ausgeschlossen.
+    - Rückwirkende Korrekturen können historische Werte verändern.
+
+change_log:
+  - id: cl001
+    version: '0.1.0'
+    date: '2025-03-15'
+    description: Initiale Version – Basisdaten aus SAP, Übersichtsseite
+    author: Thomas Müller
+    impact: major
+    ticket_link: 'JIRA-1234'
+  - id: cl002
+    version: '0.2.0'
+    date: '2025-04-10'
+    description: Detailseite pro Mitarbeiter hinzugefügt, Drillthrough konfiguriert
+    author: Thomas Müller
+    impact: major
+    ticket_link: 'JIRA-1280'
+  - id: cl003
+    version: '1.0.0'
+    date: '2025-06-01'
+    description: RLS implementiert, Performance-Optimierungen, Go-Live Produktion
+    author: Thomas Müller
+    impact: major
+    ticket_link: 'JIRA-1350'

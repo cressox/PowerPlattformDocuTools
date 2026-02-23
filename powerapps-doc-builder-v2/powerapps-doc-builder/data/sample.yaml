@@ -1,0 +1,265 @@
+# Sample Power Apps Canvas App YAML Export
+# This is a mock export demonstrating common structures.
+
+App:
+  Name: Urlaubsantrag-App
+  Properties:
+    AppVersion: "1.2.3"
+    Author: "Max Mustermann"
+    LastModified: "2025-01-15T10:30:00Z"
+    Theme: "Blau"
+    OnStart: |
+      ClearCollect(colMitarbeiter,
+        Office365Users.SearchUser({searchTerm: "", top: 100})
+      );
+      Set(varCurrentUser, Office365Users.MyProfile());
+      Set(varIsManager, false);
+      ClearCollect(colUrlaubsantraege,
+        Filter('Urlaubsantraege', Mitarbeiter.Email = varCurrentUser.Mail)
+      );
+      Set(varAppReady, true)
+
+Screens:
+  HomeScreen:
+    Control: screen
+    Properties:
+      OnVisible: |
+        Set(varSelectedTab, "Übersicht");
+        Refresh('Urlaubsantraege')
+      Fill: "RGBA(245, 245, 250, 1)"
+    Children:
+      lblTitle:
+        Control: label
+        Properties:
+          Text: "Urlaubsantrag-Portal"
+          Size: 28
+          FontWeight: Bold
+          X: 20
+          Y: 20
+          Width: 500
+          Color: "RGBA(33, 33, 77, 1)"
+
+      galAntraege As gallery.galleryVertical:
+        Control: gallery
+        Properties:
+          Items: |
+            SortByColumns(
+              Filter('Urlaubsantraege',
+                Mitarbeiter.Email = varCurrentUser.Mail
+              ),
+              "VonDatum", Descending
+            )
+          TemplateFill: "If(ThisItem.Status = \"Genehmigt\", RGBA(220,255,220,1), If(ThisItem.Status = \"Abgelehnt\", RGBA(255,220,220,1), White))"
+          X: 20
+          Y: 100
+          Width: 600
+          Height: 500
+        Children:
+          lblAntragDatum:
+            Control: label
+            Properties:
+              Text: "ThisItem.VonDatum & \" – \" & ThisItem.BisDatum"
+              Size: 14
+          lblStatus:
+            Control: label
+            Properties:
+              Text: "ThisItem.Status"
+              Color: |
+                If(ThisItem.Status = "Genehmigt", RGBA(0,150,0,1),
+                   ThisItem.Status = "Abgelehnt", RGBA(200,0,0,1),
+                   RGBA(100,100,100,1))
+          btnDetails:
+            Control: button
+            Properties:
+              Text: "Details"
+              OnSelect: |
+                Set(varSelectedAntrag, ThisItem);
+                Navigate(DetailScreen, ScreenTransition.Fade)
+
+      btnNeuerAntrag:
+        Control: button
+        Properties:
+          Text: "Neuer Antrag"
+          OnSelect: |
+            Navigate(NeuerAntragScreen, ScreenTransition.Cover)
+          Fill: "RGBA(91, 127, 255, 1)"
+          Color: "White"
+          X: 20
+          Y: 620
+          Width: 200
+
+      btnAbmelden:
+        Control: button
+        Properties:
+          Text: "Abmelden"
+          OnSelect: |
+            Set(varCurrentUser, Blank());
+            Navigate(HomeScreen, ScreenTransition.Fade)
+          X: 500
+          Y: 620
+
+  NeuerAntragScreen:
+    Control: screen
+    Properties:
+      OnVisible: |
+        Set(varFormMode, FormMode.New);
+        ResetForm(frmAntrag)
+    Children:
+      lblFormTitle:
+        Control: label
+        Properties:
+          Text: "Neuer Urlaubsantrag"
+          Size: 24
+          FontWeight: Bold
+
+      frmAntrag As form.editForm:
+        Control: form
+        Properties:
+          DataSource: "'Urlaubsantraege'"
+          DefaultMode: "FormMode.New"
+          OnSuccess: |
+            Notify("Antrag erfolgreich eingereicht!", NotificationType.Success);
+            Navigate(HomeScreen, ScreenTransition.UnCover)
+          OnFailure: |
+            Notify("Fehler beim Einreichen: " & frmAntrag.Error, NotificationType.Error)
+        Children:
+          dcVonDatum:
+            Control: datacard
+            Properties:
+              DataField: "VonDatum"
+              Default: "Today()"
+              Update: "dpVonDatum.SelectedDate"
+          dcBisDatum:
+            Control: datacard
+            Properties:
+              DataField: "BisDatum"
+              Default: "Today() + 7"
+              Update: "dpBisDatum.SelectedDate"
+          dcGrund:
+            Control: datacard
+            Properties:
+              DataField: "Grund"
+              Default: ""
+              Update: "txtGrund.Text"
+          dcMitarbeiter:
+            Control: datacard
+            Properties:
+              DataField: "Mitarbeiter"
+              Default: "varCurrentUser.Mail"
+              Update: "varCurrentUser.Mail"
+
+      btnSubmit:
+        Control: button
+        Properties:
+          Text: "Einreichen"
+          OnSelect: |
+            If(
+              IsBlank(dpVonDatum.SelectedDate) || IsBlank(dpBisDatum.SelectedDate),
+              Notify("Bitte alle Pflichtfelder ausfüllen.", NotificationType.Warning),
+              SubmitForm(frmAntrag)
+            )
+          Fill: "RGBA(91, 127, 255, 1)"
+          Color: "White"
+
+      btnZurueck:
+        Control: button
+        Properties:
+          Text: "Zurück"
+          OnSelect: "Navigate(HomeScreen, ScreenTransition.UnCover)"
+
+  DetailScreen:
+    Control: screen
+    Properties:
+      OnVisible: |
+        Set(varDetailLoaded, true);
+        If(varSelectedAntrag.Status = "Offen" && varIsManager,
+          Set(varCanApprove, true),
+          Set(varCanApprove, false)
+        )
+    Children:
+      lblDetailTitle:
+        Control: label
+        Properties:
+          Text: "\"Antrag: \" & varSelectedAntrag.VonDatum & \" – \" & varSelectedAntrag.BisDatum"
+          Size: 22
+
+      lblDetailStatus:
+        Control: label
+        Properties:
+          Text: "\"Status: \" & varSelectedAntrag.Status"
+          Size: 16
+
+      btnGenehmigen:
+        Control: button
+        Properties:
+          Text: "Genehmigen"
+          Visible: "varCanApprove"
+          OnSelect: |
+            Patch('Urlaubsantraege',
+              varSelectedAntrag,
+              {Status: "Genehmigt", GenehmigtVon: varCurrentUser.DisplayName}
+            );
+            Notify("Antrag genehmigt.", NotificationType.Success);
+            Navigate(HomeScreen, ScreenTransition.Fade)
+          Fill: "RGBA(0, 150, 0, 1)"
+          Color: "White"
+
+      btnAblehnen:
+        Control: button
+        Properties:
+          Text: "Ablehnen"
+          Visible: "varCanApprove"
+          OnSelect: |
+            Patch('Urlaubsantraege',
+              varSelectedAntrag,
+              {Status: "Abgelehnt", AbgelehntVon: varCurrentUser.DisplayName}
+            );
+            Notify("Antrag abgelehnt.", NotificationType.Warning);
+            Navigate(HomeScreen, ScreenTransition.Fade)
+          Fill: "RGBA(200, 0, 0, 1)"
+          Color: "White"
+
+      btnZurueckDetail:
+        Control: button
+        Properties:
+          Text: "Zurück"
+          OnSelect: "Navigate(HomeScreen, ScreenTransition.UnCover)"
+
+  AdminScreen:
+    Control: screen
+    Properties:
+      OnVisible: |
+        If(!varIsManager,
+          Notify("Kein Zugriff.", NotificationType.Error);
+          Navigate(HomeScreen, ScreenTransition.Fade)
+        );
+        ClearCollect(colAlleAntraege, 'Urlaubsantraege')
+    Children:
+      galAlleAntraege:
+        Control: gallery
+        Properties:
+          Items: "SortByColumns(colAlleAntraege, \"VonDatum\", Descending)"
+        Children:
+          lblAdminName:
+            Control: label
+            Properties:
+              Text: "ThisItem.Mitarbeiter.DisplayName"
+          lblAdminStatus:
+            Control: label
+            Properties:
+              Text: "ThisItem.Status"
+
+Connections:
+  Office365Users:
+    type: "Office365Users"
+    connectionId: "shared-office365users-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  SharePointConnection:
+    type: "SharePoint"
+    connectionId: "shared-sharepointonline-f9e8d7c6-b5a4-3210-fedc-ba0987654321"
+    siteUrl: "https://contoso.sharepoint.com/sites/HR"
+
+DataSources:
+  Urlaubsantraege:
+    type: "SharePoint"
+    listName: "Urlaubsantraege"
+    site: "https://contoso.sharepoint.com/sites/HR"
