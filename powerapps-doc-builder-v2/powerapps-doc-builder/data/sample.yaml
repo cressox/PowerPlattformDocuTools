@@ -6,7 +6,7 @@ App:
   Properties:
     AppVersion: "1.2.3"
     Author: "Max Mustermann"
-    LastModified: "2025-01-15T10:30:00Z"
+    LastModified: "redacted-host:0000:00Z"
     Theme: "Blau"
     OnStart: |
       ClearCollect(colMitarbeiter,
@@ -252,14 +252,14 @@ Screens:
 Connections:
   Office365Users:
     type: "Office365Users"
-    connectionId: "shared-office365users-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    connectionId: "shared-office365users-00000000-0000-0000-0000-000000000000"
   SharePointConnection:
     type: "SharePoint"
-    connectionId: "shared-sharepointonline-f9e8d7c6-b5a4-3210-fedc-ba0987654321"
-    siteUrl: "https://contoso.sharepoint.com/sites/HR"
+    connectionId: "shared-sharepointonline-00000000-0000-0000-0000-000000000000"
+    siteUrl: "https://redacted.example"
 
 DataSources:
   Urlaubsantraege:
     type: "SharePoint"
     listName: "Urlaubsantraege"
-    site: "https://contoso.sharepoint.com/sites/HR"
+    site: "https://redacted.example"

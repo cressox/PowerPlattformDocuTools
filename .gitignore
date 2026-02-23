@@ -65,12 +65,16 @@ htmlcov/
 # Generated project outputs
 **/data/output/
 
-# Sensitive/local project state and generated models
-**/data/app_model.json
-**/data/project.json
-**/data/project.yml
-**/data/images/
-**/data/screenshots/
+# Data folders: block by default, allow only samples/templates/placeholders
+**/data/**
+!**/data/
+!**/data/templates/
+!**/data/templates/**
+!**/data/sample*
+!**/data/sample*/**
+!**/data/**/*.sample.*
+!**/data/**/.gitkeep
+!**/data/**/README.md
 
 # Power Platform export artifacts (often contain internal metadata)
 **/*.msapp
