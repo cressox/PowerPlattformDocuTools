@@ -32,7 +32,7 @@ class CIBranding:
     accent_color: str = "#F2C811"      # Accent colour (hex)
     secondary_color: str = "#2563EB"   # Secondary colour (hex)
     font_name: str = ""                # Custom font name (optional)
-    footer_text: str = "Power BI Documentation Generator"
+    footer_text: str = "Dokumentiert von Felix Tischler"
     header_text: str = ""              # Optional header on every page
     cover_subtitle: str = "Dokumentation"
     confidentiality_notice: str = ""   # e.g. "Vertraulich – Nur für internen Gebrauch"
@@ -271,6 +271,79 @@ class ChangeLogEntry:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
+# ── J) Permissions / Berechtigungen ─────────────────────────────
+
+@dataclass
+class Permissions:
+    """Access rights, roles, and data sensitivity for the report."""
+    workspace_roles: str = ""            # Workspace-Rollen (Admin, Member, Contributor, Viewer)
+    rls_details: str = ""                # Row-Level Security Konfiguration
+    sharing_permissions: str = ""        # Freigabe-/Sharing-Regelungen
+    data_sensitivity: str = ""           # Datensensitivitaet / Klassifizierung
+    required_roles_for_changes: str = "" # Rollen fuer Aenderungen am Bericht
+    service_principal: str = ""          # Service Principal / App-Registrierung
+    notes: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Permissions":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+# ── K) Storage Structure / Ablagestruktur ────────────────────────
+
+@dataclass
+class StorageStructure:
+    """Where files are stored and how the workspace is organized."""
+    pbix_location: str = ""              # Speicherort der PBIX-Datei
+    workspace_name: str = ""             # Power BI Workspace
+    sharepoint_path: str = ""            # SharePoint-/OneDrive-Pfad
+    data_gateway: str = ""               # Data Gateway Name/Standort
+    backup_strategy: str = ""            # Backup-/Versionierung-Strategie
+    deployment_pipeline: str = ""        # Deployment Pipeline (Dev/Test/Prod)
+    repo_url: str = ""                   # Git-Repository-URL
+    notes: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StorageStructure":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+# ── L) Naming Conventions / Namenskonzept ────────────────────────
+
+@dataclass
+class NamingConventions:
+    """Naming rules and conventions for report artefacts."""
+    measures: str = ""                   # Namensregeln fuer Measures
+    tables: str = ""                     # Namensregeln fuer Tabellen
+    columns: str = ""                    # Namensregeln fuer Spalten
+    pages: str = ""                      # Namensregeln fuer Berichtsseiten
+    reports: str = ""                    # Namensregeln fuer Berichte/Dateien
+    queries: str = ""                    # Namensregeln fuer Power Queries
+    general_rules: str = ""              # Allgemeine Regeln (Sprache, CamelCase, …)
+    notes: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NamingConventions":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+# ── M) Change Guidance / Aenderungshinweise ──────────────────────
+
+@dataclass
+class ChangeGuidance:
+    """Best practices and checklists for modifying the report."""
+    before_changes: str = ""             # Was vor Aenderungen zu beachten ist
+    testing_checklist: str = ""          # Test-Checkliste
+    deployment_steps: str = ""           # Schritte fuer Deployment
+    rollback_plan: str = ""              # Rollback-Plan
+    contact_persons: str = ""            # Ansprechpartner
+    notes: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ChangeGuidance":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
 # ── Root project ────────────────────────────────────────────────
 
 @dataclass
@@ -286,6 +359,10 @@ class Project:
     governance: Governance = field(default_factory=Governance)
     change_log: List[ChangeLogEntry] = field(default_factory=list)
     screenshots: List[Screenshot] = field(default_factory=list)
+    permissions: Permissions = field(default_factory=Permissions)
+    storage_structure: StorageStructure = field(default_factory=StorageStructure)
+    naming_conventions: NamingConventions = field(default_factory=NamingConventions)
+    change_guidance: ChangeGuidance = field(default_factory=ChangeGuidance)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -303,9 +380,15 @@ class Project:
         gov = Governance.from_dict(d.pop("governance", {}))
         changelog = [ChangeLogEntry.from_dict(c) for c in d.pop("change_log", [])]
         screenshots = [Screenshot.from_dict(s) for s in d.pop("screenshots", [])]
+        perms = Permissions.from_dict(d.pop("permissions", {}))
+        storage = StorageStructure.from_dict(d.pop("storage_structure", {}))
+        naming = NamingConventions.from_dict(d.pop("naming_conventions", {}))
+        chg_guide = ChangeGuidance.from_dict(d.pop("change_guidance", {}))
         return cls(
             meta=meta, ci_branding=ci, kpis=kpis, data_sources=sources,
             power_queries=queries, data_model=dm, measures=measures,
             report_pages=pages, governance=gov, change_log=changelog,
-            screenshots=screenshots,
+            screenshots=screenshots, permissions=perms,
+            storage_structure=storage, naming_conventions=naming,
+            change_guidance=chg_guide,
         )

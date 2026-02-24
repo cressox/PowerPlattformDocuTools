@@ -1,0 +1,3 @@
+# Variablen
+
+Keine Variablen definiert.

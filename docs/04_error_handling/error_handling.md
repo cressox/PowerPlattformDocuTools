@@ -1,0 +1,3 @@
+# Fehlerbehandlung
+
+Keine Fehlerbehandlung definiert.

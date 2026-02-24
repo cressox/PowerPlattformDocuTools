@@ -1,11 +1,21 @@
-# Übersicht – 
+# Uebersicht
 
+## Presales-CheckUpZuarbeitVertrieb-0824178E-E5BE-F011-BBD3-7CED8D5CFF17
 
-
-| Feld | Wert |
+| Eigenschaft | Wert |
 |---|---|
-| Eigentümer |  |
+| Typ | Cloud Automated |
+| Status | Entwurf |
+| Eigentuemer |  |
 | Autor |  |
-| Version |  |
-| Datum |  |
-| Zielgruppe |  |
+| Erstellt |  |
+| Letzte Aenderung |  |
+| Solution |  |
+| Lizenz | Standard |
+
+### Beschreibung
+
+
+
+
+

@@ -29,11 +29,17 @@ try:
         Project, ProjectMeta, Environment, CIBranding, Screenshot,
         KPI, DataSource, PowerQuery, DataModel, ModelTable, ModelRelationship,
         Measure, Visual, ReportPage, Governance, ChangeLogEntry,
+        Permissions, StorageStructure, NamingConventions, ChangeGuidance,
         _new_id, _today,
     )
     from ..storage import save_project, load_project, project_exists, DEFAULT_PROJECT_FILE
     from ..generator import generate_docs
-    from ..pdf_export import generate_pdf, default_pdf_filename
+    from ..pdf_export import generate_pdf, default_pdf_filename, get_pdf_section_labels
+    from ..import_manager import (
+        ImportOptions, ImportReport, ImportPreview,
+        import_file, preview_import, detect_file_type,
+    )
+    from ..pbitools_parser import pbitools_available
 except ImportError:
     project_root = Path(__file__).resolve().parents[2]
     if str(project_root) not in sys.path:
@@ -50,11 +56,17 @@ except ImportError:
         Project, ProjectMeta, Environment, CIBranding, Screenshot,
         KPI, DataSource, PowerQuery, DataModel, ModelTable, ModelRelationship,
         Measure, Visual, ReportPage, Governance, ChangeLogEntry,
+        Permissions, StorageStructure, NamingConventions, ChangeGuidance,
         _new_id, _today,
     )
     from src.storage import save_project, load_project, project_exists, DEFAULT_PROJECT_FILE
     from src.generator import generate_docs
-    from src.pdf_export import generate_pdf, default_pdf_filename
+    from src.pdf_export import generate_pdf, default_pdf_filename, get_pdf_section_labels
+    from src.import_manager import (
+        ImportOptions, ImportReport, ImportPreview,
+        import_file, preview_import, detect_file_type,
+    )
+    from src.pbitools_parser import pbitools_available
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -80,6 +92,12 @@ class DashboardPage(FormPage):
         self.btn_open = QPushButton("📂  Projekt oeffnen …")
         self.btn_open.setCursor(Qt.PointingHandCursor)
         btn_row.addWidget(self.btn_open)
+
+        self.btn_import = QPushButton("📥  PBIX / BIM importieren …")
+        self.btn_import.setObjectName("accent")
+        self.btn_import.setCursor(Qt.PointingHandCursor)
+        btn_row.addWidget(self.btn_import)
+
         btn_row.addStretch()
         self._layout.addLayout(btn_row)
 
@@ -682,6 +700,291 @@ class ChangeLogPage(ListEditorPage):
 
 
 # ══════════════════════════════════════════════════════════════════
+# PERMISSIONS PAGE
+# ══════════════════════════════════════════════════════════════════
+
+class PermissionsPage(FormPage):
+    def __init__(self, p=None):
+        super().__init__(p)
+        self.add_title("Berechtigungen")
+        self.add_subtitle("Workspace-Rollen, RLS, Freigaben und Datensensitivitaet")
+        grp = QGroupBox("Details"); form = QFormLayout(grp)
+        self.f_roles = QTextEdit(); self.f_roles.setMaximumHeight(80)
+        self.f_roles.setPlaceholderText("z.B. Admin: IT-Team, Member: BI-Entwickler, Viewer: Fachabteilung")
+        self.f_rls = QTextEdit(); self.f_rls.setMaximumHeight(80)
+        self.f_rls.setPlaceholderText("z.B. RLS-Rolle 'Region' filtert nach Standort des Users")
+        self.f_sharing = QTextEdit(); self.f_sharing.setMaximumHeight(60)
+        self.f_sharing.setPlaceholderText("z.B. Nur ueber App verteilt, kein direktes Sharing")
+        self.f_sensitivity = QTextEdit(); self.f_sensitivity.setMaximumHeight(60)
+        self.f_sensitivity.setPlaceholderText("z.B. Vertraulich – nur interne Nutzung")
+        self.f_change_roles = QTextEdit(); self.f_change_roles.setMaximumHeight(60)
+        self.f_change_roles.setPlaceholderText("z.B. Nur BI-Admins duerfen Modell-Aenderungen vornehmen")
+        self.f_sp = QTextEdit(); self.f_sp.setMaximumHeight(60)
+        self.f_sp.setPlaceholderText("z.B. App-Registrierung fuer automatischen Refresh")
+        self.f_notes = QTextEdit(); self.f_notes.setMaximumHeight(60)
+        form.addRow("Workspace-Rollen:", self.f_roles)
+        form.addRow("Row-Level Security:", self.f_rls)
+        form.addRow("Freigabe / Sharing:", self.f_sharing)
+        form.addRow("Datensensitivitaet:", self.f_sensitivity)
+        form.addRow("Rollen fuer Aenderungen:", self.f_change_roles)
+        form.addRow("Service Principal:", self.f_sp)
+        form.addRow("Anmerkungen:", self.f_notes)
+        self._layout.addWidget(grp); self._layout.addStretch()
+
+    def load(self, perm):
+        self.f_roles.setPlainText(perm.workspace_roles)
+        self.f_rls.setPlainText(perm.rls_details)
+        self.f_sharing.setPlainText(perm.sharing_permissions)
+        self.f_sensitivity.setPlainText(perm.data_sensitivity)
+        self.f_change_roles.setPlainText(perm.required_roles_for_changes)
+        self.f_sp.setPlainText(perm.service_principal)
+        self.f_notes.setPlainText(perm.notes)
+
+    def save(self, perm):
+        perm.workspace_roles = self.f_roles.toPlainText().strip()
+        perm.rls_details = self.f_rls.toPlainText().strip()
+        perm.sharing_permissions = self.f_sharing.toPlainText().strip()
+        perm.data_sensitivity = self.f_sensitivity.toPlainText().strip()
+        perm.required_roles_for_changes = self.f_change_roles.toPlainText().strip()
+        perm.service_principal = self.f_sp.toPlainText().strip()
+        perm.notes = self.f_notes.toPlainText().strip()
+
+
+# ══════════════════════════════════════════════════════════════════
+# STORAGE STRUCTURE PAGE
+# ══════════════════════════════════════════════════════════════════
+
+class StorageStructurePage(FormPage):
+    def __init__(self, p=None):
+        super().__init__(p)
+        self.add_title("Ablagestruktur")
+        self.add_subtitle("Speicherorte, Workspace, Deployment und Backup")
+        grp = QGroupBox("Details"); form = QFormLayout(grp)
+        self.f_pbix = QLineEdit()
+        self.f_pbix.setPlaceholderText("z.B. SharePoint > BI-Team > Reports > Report_v2.pbix")
+        self.f_ws = QLineEdit()
+        self.f_ws.setPlaceholderText("z.B. WS_BI_Produktion")
+        self.f_sp = QLineEdit()
+        self.f_sp.setPlaceholderText("z.B. https://company.sharepoint.com/sites/BI/Reports")
+        self.f_gw = QLineEdit()
+        self.f_gw.setPlaceholderText("z.B. On-Premises Gateway 'GW-SQL-Prod'")
+        self.f_backup = QTextEdit(); self.f_backup.setMaximumHeight(60)
+        self.f_backup.setPlaceholderText("z.B. Woechentliches Backup via SharePoint-Versionierung")
+        self.f_pipeline = QTextEdit(); self.f_pipeline.setMaximumHeight(60)
+        self.f_pipeline.setPlaceholderText("z.B. Dev > Test > Prod via Deployment Pipeline")
+        self.f_repo = QLineEdit()
+        self.f_repo.setPlaceholderText("z.B. https://dev.azure.com/org/project/_git/pbi-reports")
+        self.f_notes = QTextEdit(); self.f_notes.setMaximumHeight(60)
+        form.addRow("PBIX-Speicherort:", self.f_pbix)
+        form.addRow("Power BI Workspace:", self.f_ws)
+        form.addRow("SharePoint / OneDrive:", self.f_sp)
+        form.addRow("Data Gateway:", self.f_gw)
+        form.addRow("Backup-Strategie:", self.f_backup)
+        form.addRow("Deployment Pipeline:", self.f_pipeline)
+        form.addRow("Git-Repository:", self.f_repo)
+        form.addRow("Anmerkungen:", self.f_notes)
+        self._layout.addWidget(grp); self._layout.addStretch()
+
+    def load(self, st):
+        self.f_pbix.setText(st.pbix_location)
+        self.f_ws.setText(st.workspace_name)
+        self.f_sp.setText(st.sharepoint_path)
+        self.f_gw.setText(st.data_gateway)
+        self.f_backup.setPlainText(st.backup_strategy)
+        self.f_pipeline.setPlainText(st.deployment_pipeline)
+        self.f_repo.setText(st.repo_url)
+        self.f_notes.setPlainText(st.notes)
+
+    def save(self, st):
+        st.pbix_location = self.f_pbix.text().strip()
+        st.workspace_name = self.f_ws.text().strip()
+        st.sharepoint_path = self.f_sp.text().strip()
+        st.data_gateway = self.f_gw.text().strip()
+        st.backup_strategy = self.f_backup.toPlainText().strip()
+        st.deployment_pipeline = self.f_pipeline.toPlainText().strip()
+        st.repo_url = self.f_repo.text().strip()
+        st.notes = self.f_notes.toPlainText().strip()
+
+
+# ══════════════════════════════════════════════════════════════════
+# NAMING CONVENTIONS PAGE
+# ══════════════════════════════════════════════════════════════════
+
+class NamingConventionsPage(FormPage):
+    def __init__(self, p=None):
+        super().__init__(p)
+        self.add_title("Namenskonzept")
+        self.add_subtitle("Benennungsregeln fuer Measures, Tabellen, Spalten, Seiten und Dateien")
+        grp = QGroupBox("Details"); form = QFormLayout(grp)
+        self.f_general = QTextEdit(); self.f_general.setMaximumHeight(80)
+        self.f_general.setPlaceholderText("z.B. Englisch, CamelCase, keine Umlaute/Sonderzeichen")
+        self.f_measures = QTextEdit(); self.f_measures.setMaximumHeight(60)
+        self.f_measures.setPlaceholderText("z.B. Praefix _ fuer Hilfsmeasures, Total/Avg als Suffix")
+        self.f_tables = QTextEdit(); self.f_tables.setMaximumHeight(60)
+        self.f_tables.setPlaceholderText("z.B. dim_ fuer Dimensionen, fact_ fuer Fakten")
+        self.f_columns = QTextEdit(); self.f_columns.setMaximumHeight(60)
+        self.f_columns.setPlaceholderText("z.B. ID-Spalten enden mit Key oder ID")
+        self.f_pages = QTextEdit(); self.f_pages.setMaximumHeight(60)
+        self.f_pages.setPlaceholderText("z.B. 01_Uebersicht, 02_Detail, Tooltip_xxx")
+        self.f_reports = QTextEdit(); self.f_reports.setMaximumHeight(60)
+        self.f_reports.setPlaceholderText("z.B. [Kunde]_[Thema]_Report_v[Version].pbix")
+        self.f_queries = QTextEdit(); self.f_queries.setMaximumHeight(60)
+        self.f_queries.setPlaceholderText("z.B. src_ fuer Quell-Queries, tf_ fuer Transformationen")
+        self.f_notes = QTextEdit(); self.f_notes.setMaximumHeight(60)
+        form.addRow("Allgemeine Regeln:", self.f_general)
+        form.addRow("Measures:", self.f_measures)
+        form.addRow("Tabellen:", self.f_tables)
+        form.addRow("Spalten:", self.f_columns)
+        form.addRow("Berichtsseiten:", self.f_pages)
+        form.addRow("Berichte / Dateien:", self.f_reports)
+        form.addRow("Power Queries:", self.f_queries)
+        form.addRow("Anmerkungen:", self.f_notes)
+        self._layout.addWidget(grp); self._layout.addStretch()
+
+    def load(self, nc):
+        self.f_general.setPlainText(nc.general_rules)
+        self.f_measures.setPlainText(nc.measures)
+        self.f_tables.setPlainText(nc.tables)
+        self.f_columns.setPlainText(nc.columns)
+        self.f_pages.setPlainText(nc.pages)
+        self.f_reports.setPlainText(nc.reports)
+        self.f_queries.setPlainText(nc.queries)
+        self.f_notes.setPlainText(nc.notes)
+
+    def save(self, nc):
+        nc.general_rules = self.f_general.toPlainText().strip()
+        nc.measures = self.f_measures.toPlainText().strip()
+        nc.tables = self.f_tables.toPlainText().strip()
+        nc.columns = self.f_columns.toPlainText().strip()
+        nc.pages = self.f_pages.toPlainText().strip()
+        nc.reports = self.f_reports.toPlainText().strip()
+        nc.queries = self.f_queries.toPlainText().strip()
+        nc.notes = self.f_notes.toPlainText().strip()
+
+
+# ══════════════════════════════════════════════════════════════════
+# CHANGE GUIDANCE PAGE
+# ══════════════════════════════════════════════════════════════════
+
+class ChangeGuidancePage(FormPage):
+    def __init__(self, p=None):
+        super().__init__(p)
+        self.add_title("Aenderungshinweise & Best Practices")
+        self.add_subtitle("Was vor, waehrend und nach Aenderungen am Bericht zu beachten ist")
+        grp = QGroupBox("Details"); form = QFormLayout(grp)
+        self.f_before = QTextEdit(); self.f_before.setMaximumHeight(80)
+        self.f_before.setPlaceholderText("z.B. Backup erstellen, Aenderung mit Owner abstimmen")
+        self.f_testing = QTextEdit(); self.f_testing.setMaximumHeight(80)
+        self.f_testing.setPlaceholderText("z.B. Alle Measures pruefen, Refresh testen, RLS validieren")
+        self.f_deploy = QTextEdit(); self.f_deploy.setMaximumHeight(80)
+        self.f_deploy.setPlaceholderText("z.B. In Dev testen > Peer Review > Deploy nach Prod")
+        self.f_rollback = QTextEdit(); self.f_rollback.setMaximumHeight(60)
+        self.f_rollback.setPlaceholderText("z.B. Vorherige PBIX-Version aus SharePoint wiederherstellen")
+        self.f_contacts = QTextEdit(); self.f_contacts.setMaximumHeight(60)
+        self.f_contacts.setPlaceholderText("z.B. BI-Team: bi-team@company.com, Owner: max.mustermann")
+        self.f_notes = QTextEdit(); self.f_notes.setMaximumHeight(60)
+        form.addRow("Vor Aenderungen:", self.f_before)
+        form.addRow("Test-Checkliste:", self.f_testing)
+        form.addRow("Deployment-Schritte:", self.f_deploy)
+        form.addRow("Rollback-Plan:", self.f_rollback)
+        form.addRow("Ansprechpartner:", self.f_contacts)
+        form.addRow("Anmerkungen:", self.f_notes)
+        self._layout.addWidget(grp); self._layout.addStretch()
+
+    def load(self, cg):
+        self.f_before.setPlainText(cg.before_changes)
+        self.f_testing.setPlainText(cg.testing_checklist)
+        self.f_deploy.setPlainText(cg.deployment_steps)
+        self.f_rollback.setPlainText(cg.rollback_plan)
+        self.f_contacts.setPlainText(cg.contact_persons)
+        self.f_notes.setPlainText(cg.notes)
+
+    def save(self, cg):
+        cg.before_changes = self.f_before.toPlainText().strip()
+        cg.testing_checklist = self.f_testing.toPlainText().strip()
+        cg.deployment_steps = self.f_deploy.toPlainText().strip()
+        cg.rollback_plan = self.f_rollback.toPlainText().strip()
+        cg.contact_persons = self.f_contacts.toPlainText().strip()
+        cg.notes = self.f_notes.toPlainText().strip()
+
+
+# ══════════════════════════════════════════════════════════════════
+# PDF SECTION SELECTION DIALOG
+# ══════════════════════════════════════════════════════════════════
+
+class PdfSectionDialog:
+    """Dialog to select which sections to include in the PDF export."""
+
+    def __init__(self, parent=None):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        self._dlg = QDialog(parent)
+        self._dlg.setWindowTitle("📕  PDF-Sektionen auswaehlen")
+        self._dlg.setMinimumSize(420, 480)
+        self._dlg.setStyleSheet(f"background: {BG_BASE}; color: {TEXT_PRIMARY};")
+
+        layout = QVBoxLayout(self._dlg)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        lbl = QLabel("Welche Abschnitte sollen im PDF enthalten sein?")
+        lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {TEXT_PRIMARY}; margin-bottom: 8px;")
+        layout.addWidget(lbl)
+
+        # Select-all / deselect-all buttons
+        btn_row = QHBoxLayout()
+        btn_all = QPushButton("Alle auswaehlen")
+        btn_all.setCursor(Qt.PointingHandCursor)
+        btn_all.clicked.connect(self._select_all)
+        btn_row.addWidget(btn_all)
+        btn_none = QPushButton("Keine auswaehlen")
+        btn_none.setCursor(Qt.PointingHandCursor)
+        btn_none.clicked.connect(self._select_none)
+        btn_row.addWidget(btn_none)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        # Section checkboxes
+        self._checkboxes: list[tuple[str, QCheckBox]] = []
+        sections = get_pdf_section_labels()
+        for key, label in sections:
+            cb = QCheckBox(label)
+            cb.setChecked(True)
+            cb.setStyleSheet(f"font-size: 12px; padding: 3px; color: {TEXT_PRIMARY};")
+            layout.addWidget(cb)
+            self._checkboxes.append((key, cb))
+
+        layout.addStretch()
+
+        # OK / Cancel
+        btn_lay = QHBoxLayout()
+        btn_lay.addStretch()
+        btn_ok = QPushButton("PDF erzeugen")
+        btn_ok.setObjectName("primary")
+        btn_ok.setCursor(Qt.PointingHandCursor)
+        btn_ok.clicked.connect(self._dlg.accept)
+        btn_lay.addWidget(btn_ok)
+        btn_cancel = QPushButton("Abbrechen")
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.clicked.connect(self._dlg.reject)
+        btn_lay.addWidget(btn_cancel)
+        layout.addLayout(btn_lay)
+
+    def _select_all(self):
+        for _, cb in self._checkboxes:
+            cb.setChecked(True)
+
+    def _select_none(self):
+        for _, cb in self._checkboxes:
+            cb.setChecked(False)
+
+    def get_selected_sections(self) -> set[str]:
+        return {key for key, cb in self._checkboxes if cb.isChecked()}
+
+    def exec(self) -> int:
+        return self._dlg.exec()
+
+
+# ══════════════════════════════════════════════════════════════════
 # MAIN WINDOW
 # ══════════════════════════════════════════════════════════════════
 
@@ -724,6 +1027,210 @@ def _make_list_wiring(main_win, page, project_list_attr):
     page.btn_add.clicked.connect(add)
     page.btn_edit.clicked.connect(apply)
     page.btn_del.clicked.connect(delete)
+
+
+# ══════════════════════════════════════════════════════════════════
+# IMPORT DIALOG
+# ══════════════════════════════════════════════════════════════════
+
+class ImportDialog(QMessageBox):
+    """
+    Modaler Import-Dialog fuer .pbix- und .bim-Dateien.
+    Zeigt Vorschau, Optionen und fuehrt den Import durch.
+    """
+
+    def __init__(self, parent=None):
+        # Wir verwenden QDialog direkt statt QMessageBox fuer bessere Kontrolle
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QRadioButton, QButtonGroup
+        self._dlg = QDialog(parent)
+        self._dlg.setWindowTitle("📥  Datei importieren")
+        self._dlg.setMinimumSize(560, 520)
+        self._dlg.setStyleSheet(f"background: {BG_BASE}; color: {TEXT_PRIMARY};")
+
+        layout = QVBoxLayout(self._dlg)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # ── Datei-Auswahl ─────────────────────────────
+        file_grp = QGroupBox("Datei")
+        file_lay = QHBoxLayout(file_grp)
+        self.file_edit = QLineEdit()
+        self.file_edit.setPlaceholderText("Pfad zur .pbix / .bim / .pbit Datei …")
+        self.file_edit.setReadOnly(True)
+        file_lay.addWidget(self.file_edit)
+        self.btn_browse = QPushButton("Waehlen …")
+        self.btn_browse.setCursor(Qt.PointingHandCursor)
+        self.btn_browse.clicked.connect(self._browse_file)
+        file_lay.addWidget(self.btn_browse)
+        layout.addWidget(file_grp)
+
+        # ── Status-Zeile ──────────────────────────────
+        self.lbl_filetype = QLabel("Erkannt: –")
+        self.lbl_filetype.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px;")
+        layout.addWidget(self.lbl_filetype)
+
+        self.lbl_pbitools = QLabel("pbi-tools: wird geprueft …")
+        self.lbl_pbitools.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px;")
+        layout.addWidget(self.lbl_pbitools)
+
+        # ── Vorschau ──────────────────────────────────
+        self.preview_grp = QGroupBox("Vorschau")
+        preview_lay = QVBoxLayout(self.preview_grp)
+        self.preview_labels: list[QLabel] = []
+        for _ in range(6):
+            lbl = QLabel("")
+            lbl.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px; padding: 2px;")
+            preview_lay.addWidget(lbl)
+            self.preview_labels.append(lbl)
+        self.preview_grp.setVisible(False)
+        layout.addWidget(self.preview_grp)
+
+        # ── Optionen ──────────────────────────────────
+        opt_grp = QGroupBox("Optionen")
+        opt_lay = QVBoxLayout(opt_grp)
+
+        self.chk_detect_types = QCheckBox("Tabellentypen automatisch erkennen")
+        self.chk_detect_types.setChecked(True)
+        opt_lay.addWidget(self.chk_detect_types)
+
+        self.chk_skip_hidden = QCheckBox("Versteckte Tabellen ueberspringen")
+        self.chk_skip_hidden.setChecked(True)
+        opt_lay.addWidget(self.chk_skip_hidden)
+
+        self.chk_kpis = QCheckBox("Measures auch als KPIs importieren")
+        self.chk_kpis.setChecked(False)
+        opt_lay.addWidget(self.chk_kpis)
+
+        # Merge-Modus
+        merge_grp = QGroupBox("Merge-Modus")
+        merge_lay = QVBoxLayout(merge_grp)
+        self.merge_group = QButtonGroup(self._dlg)
+        self.rb_replace = QRadioButton("Bestehende Daten ersetzen")
+        self.rb_replace.setChecked(True)
+        self.rb_merge = QRadioButton("Nur fehlende ergaenzen (Merge)")
+        self.rb_append = QRadioButton("An bestehende anhaengen (Append)")
+        self.merge_group.addButton(self.rb_replace, 0)
+        self.merge_group.addButton(self.rb_merge, 1)
+        self.merge_group.addButton(self.rb_append, 2)
+        merge_lay.addWidget(self.rb_replace)
+        merge_lay.addWidget(self.rb_merge)
+        merge_lay.addWidget(self.rb_append)
+        opt_lay.addWidget(merge_grp)
+
+        layout.addWidget(opt_grp)
+
+        # ── Buttons ───────────────────────────────────
+        btn_lay = QHBoxLayout()
+        btn_lay.addStretch()
+        self.btn_import = QPushButton("Importieren")
+        self.btn_import.setObjectName("primary")
+        self.btn_import.setCursor(Qt.PointingHandCursor)
+        self.btn_import.setEnabled(False)
+        self.btn_import.clicked.connect(self._dlg.accept)
+        btn_lay.addWidget(self.btn_import)
+
+        self.btn_cancel = QPushButton("Abbrechen")
+        self.btn_cancel.setCursor(Qt.PointingHandCursor)
+        self.btn_cancel.clicked.connect(self._dlg.reject)
+        btn_lay.addWidget(self.btn_cancel)
+        layout.addLayout(btn_lay)
+
+        layout.addStretch()
+
+        # State
+        self._file_path: Optional[Path] = None
+        self._preview: Optional[ImportPreview] = None
+
+        # pbi-tools Status pruefen
+        QTimer.singleShot(100, self._check_pbitools)
+
+    def _check_pbitools(self):
+        available = pbitools_available()
+        if available:
+            self.lbl_pbitools.setText("pbi-tools: ✅ verfuegbar")
+            self.lbl_pbitools.setStyleSheet(f"color: {SUCCESS}; font-size: 12px;")
+        else:
+            self.lbl_pbitools.setText("pbi-tools: ❌ nicht installiert")
+            self.lbl_pbitools.setStyleSheet(f"color: {WARNING}; font-size: 12px;")
+
+    def _browse_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self._dlg,
+            "Power BI Datei waehlen",
+            str(Path.cwd()),
+            "Power BI Dateien (*.pbix *.pbit *.bim);;JSON (*.json);;Alle (*)",
+        )
+        if path:
+            self._file_path = Path(path)
+            self.file_edit.setText(path)
+            self._update_preview()
+
+    def set_file(self, path: Path):
+        """Datei programmatisch setzen (z.B. per Drag-and-Drop)."""
+        self._file_path = path
+        self.file_edit.setText(str(path))
+        self._update_preview()
+
+    def _update_preview(self):
+        if not self._file_path or not self._file_path.exists():
+            return
+
+        ftype = detect_file_type(self._file_path)
+        type_labels = {
+            "pbix": ".pbix (Power BI Desktop)",
+            "pbit": ".pbit (Power BI Template)",
+            "bim": ".bim (Tabular Model)",
+            "json_bim": ".json (BIM / Tabular Model)",
+            "unknown": "Unbekannt",
+        }
+        self.lbl_filetype.setText(f"Erkannt: {type_labels.get(ftype, ftype)}")
+
+        try:
+            self._preview = preview_import(self._file_path)
+            self.preview_grp.setVisible(True)
+
+            lines = [
+                f"📊 {self._preview.page_count} Seiten, {self._preview.visual_count} Visuals",
+                f"⚙️  {self._preview.query_count} Power Queries",
+                f"🗄️  {self._preview.source_count} Datenquellen erkannt",
+                f"📐 {self._preview.measure_count} Measures",
+                f"🔗 {self._preview.relationship_count} Beziehungen",
+                f"🗃️  {self._preview.table_count} Tabellen",
+            ]
+            # Nicht-verfuegbare Elemente kennzeichnen
+            for i, lbl_text in enumerate(lines):
+                if i < len(self.preview_labels):
+                    self.preview_labels[i].setText(lbl_text)
+
+            if self._preview.not_available:
+                na_text = " | ".join(self._preview.not_available)
+                if len(self.preview_labels) > 5:
+                    self.preview_labels[5].setText(f"⚠️ {na_text}")
+                    self.preview_labels[5].setStyleSheet(f"color: {WARNING}; font-size: 11px;")
+
+            self.btn_import.setEnabled(True)
+
+        except Exception as exc:
+            self.preview_grp.setVisible(False)
+            self.lbl_filetype.setText(f"Erkannt: Fehler – {exc}")
+            self.btn_import.setEnabled(False)
+
+    def get_options(self) -> ImportOptions:
+        """Liefert die vom User gewaehlten Import-Optionen."""
+        mode_id = self.merge_group.checkedId()
+        mode = {0: "replace", 1: "merge", 2: "append"}.get(mode_id, "replace")
+        return ImportOptions(
+            merge_mode=mode,
+            import_measures_as_kpis=self.chk_kpis.isChecked(),
+            skip_hidden_tables=self.chk_skip_hidden.isChecked(),
+            detect_table_types=self.chk_detect_types.isChecked(),
+        )
+
+    def get_file_path(self) -> Optional[Path]:
+        return self._file_path
+
+    def exec(self) -> int:
+        return self._dlg.exec()
 
 
 class MainWindow(QMainWindow):
@@ -775,6 +1282,7 @@ class MainWindow(QMainWindow):
         self.pg_dash = DashboardPage()
         self.pg_dash.btn_new.clicked.connect(self._new_project)
         self.pg_dash.btn_open.clicked.connect(self._open_file)
+        self.pg_dash.btn_import.clicked.connect(self._import_file)
         self.pg_meta = MetadataPage()
         self.pg_ci = CIBrandingPage()
         self.pg_kpis = KPIPage()
@@ -785,11 +1293,20 @@ class MainWindow(QMainWindow):
         self.pg_pages = ReportPagesPage()
         self.pg_gov = GovernancePage()
         self.pg_cl = ChangeLogPage()
+        self.pg_perms = PermissionsPage()
+        self.pg_storage = StorageStructurePage()
+        self.pg_naming = NamingConventionsPage()
+        self.pg_chg_guide = ChangeGuidancePage()
         self.pg_preview = PreviewPage()
 
+        # Stack order must match Sidebar.ITEMS indices:
+        # 0=Dashboard, 1=Metadaten, 2=CI, 3=KPIs, 4=Datenquellen, 5=PowerQuery,
+        # 6=Datenmodell, 7=Measures, 8=Berichtsseiten, 9=Governance, 10=Aenderungen,
+        # 11=Berechtigungen, 12=Ablagestruktur, 13=Namenskonzept, 14=Aenderungshinweise, 15=Vorschau
         for pg in [self.pg_dash, self.pg_meta, self.pg_ci, self.pg_kpis, self.pg_ds,
                    self.pg_pq, self.pg_dm, self.pg_measures, self.pg_pages, self.pg_gov,
-                   self.pg_cl, self.pg_preview]:
+                   self.pg_cl, self.pg_perms, self.pg_storage, self.pg_naming,
+                   self.pg_chg_guide, self.pg_preview]:
             self.stack.addWidget(pg)
 
         # Wire list editors
@@ -814,9 +1331,13 @@ class MainWindow(QMainWindow):
         if cur == self.pg_ci: self.pg_ci.save(self.project.ci_branding)
         if cur == self.pg_dm: self.pg_dm.save(self.project.data_model)
         if cur == self.pg_gov: self.pg_gov.save(self.project.governance)
+        if cur == self.pg_perms: self.pg_perms.save(self.project.permissions)
+        if cur == self.pg_storage: self.pg_storage.save(self.project.storage_structure)
+        if cur == self.pg_naming: self.pg_naming.save(self.project.naming_conventions)
+        if cur == self.pg_chg_guide: self.pg_chg_guide.save(self.project.change_guidance)
         self.stack.setCurrentIndex(idx)
         if idx == 0: self.pg_dash.refresh(self.project, str(self.project_path))
-        if idx == 11:  # Preview
+        if idx == 15:  # Preview
             self._collect_all()
             self.pg_preview.set_project(self.project)
 
@@ -825,6 +1346,10 @@ class MainWindow(QMainWindow):
         self.pg_ci.save(self.project.ci_branding)
         self.pg_dm.save(self.project.data_model)
         self.pg_gov.save(self.project.governance)
+        self.pg_perms.save(self.project.permissions)
+        self.pg_storage.save(self.project.storage_structure)
+        self.pg_naming.save(self.project.naming_conventions)
+        self.pg_chg_guide.save(self.project.change_guidance)
 
     def _try_load(self):
         if project_exists():
@@ -847,6 +1372,10 @@ class MainWindow(QMainWindow):
         self.pg_pages.load_items(self.project.report_pages)
         self.pg_gov.load(self.project.governance)
         self.pg_cl.load_items(self.project.change_log)
+        self.pg_perms.load(self.project.permissions)
+        self.pg_storage.load(self.project.storage_structure)
+        self.pg_naming.load(self.project.naming_conventions)
+        self.pg_chg_guide.load(self.project.change_guidance)
 
     def _new_project(self):
         if self.project.meta.report_name:
@@ -868,6 +1397,54 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Geladen: {path}")
             except Exception as e:
                 QMessageBox.critical(self, "Fehler", str(e))
+
+    def _import_file(self):
+        """PBIX/BIM Import-Dialog oeffnen und ausfuehren."""
+        from PySide6.QtWidgets import QDialog
+        dlg = ImportDialog(self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        file_path = dlg.get_file_path()
+        if not file_path:
+            return
+
+        options = dlg.get_options()
+
+        # Fortschrittsanzeige
+        prog = QProgressDialog("Import wird durchgefuehrt …", None, 0, 0, self)
+        prog.setWindowTitle("Import")
+        prog.setWindowModality(Qt.WindowModal)
+        prog.setMinimumDuration(0)
+        prog.show()
+        QApplication.processEvents()
+
+        try:
+            report = import_file(file_path, self.project, options)
+            prog.close()
+
+            self._refresh_all()
+            self.pg_dash.refresh(self.project, str(self.project_path))
+
+            # Import-Bericht anzeigen
+            summary = report.summary_text()
+            icon = QMessageBox.Information if report.success else QMessageBox.Warning
+            msg = QMessageBox(icon, "Import abgeschlossen", summary, QMessageBox.Ok, self)
+            msg.setDetailedText("\n".join(report.warnings) if report.warnings else "Keine Warnungen.")
+            msg.exec()
+
+            # Zur Metadaten-Seite navigieren
+            self.sidebar.select(1)
+            self.stack.setCurrentIndex(1)
+            self.statusBar().showMessage(f"Import abgeschlossen: {file_path.name}")
+            self._toast("Import erfolgreich")
+
+        except Exception as exc:
+            prog.close()
+            QMessageBox.critical(
+                self, "Import-Fehler",
+                f"Import fehlgeschlagen:\n{exc}\n\n{traceback.format_exc()}"
+            )
 
     def _save(self):
         self._collect_all()
@@ -892,6 +1469,17 @@ class MainWindow(QMainWindow):
 
     def _gen_pdf(self):
         self._save()
+
+        # Show section selection dialog
+        from PySide6.QtWidgets import QDialog
+        sec_dlg = PdfSectionDialog(self)
+        if sec_dlg.exec() != QDialog.Accepted:
+            return
+        selected = sec_dlg.get_selected_sections()
+        if not selected:
+            QMessageBox.warning(self, "Hinweis", "Keine Sektionen ausgewaehlt.")
+            return
+
         default = default_pdf_filename(self.project)
         path, _ = QFileDialog.getSaveFileName(self, "PDF speichern", str(Path.cwd() / default),
                     "PDF (*.pdf)")
@@ -900,7 +1488,7 @@ class MainWindow(QMainWindow):
         prog.setWindowTitle("PDF-Export"); prog.setWindowModality(Qt.WindowModal)
         prog.setMinimumDuration(0); prog.show(); QApplication.processEvents()
         try:
-            result = generate_pdf(self.project, Path(path))
+            result = generate_pdf(self.project, Path(path), sections=selected)
             prog.close()
             reply = QMessageBox.information(self, "PDF erstellt",
                 f"PDF gespeichert:\n{result}\n\nOeffnen?",

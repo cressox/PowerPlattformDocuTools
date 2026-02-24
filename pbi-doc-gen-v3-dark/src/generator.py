@@ -61,6 +61,10 @@ def gen_index(p: Project) -> str:
         "8. [Governance – Aktualisierung, Gateway, RLS](07_governance/refresh_gateway_rls.md)",
         "9. [Annahmen & Einschränkungen](07_governance/assumptions_limitations.md)",
         "10. [Änderungsprotokoll](08_change_log/change_log.md)",
+        "11. [Berechtigungen](09_permissions/permissions.md)",
+        "12. [Ablagestruktur](10_storage/storage.md)",
+        "13. [Namenskonzept](11_naming/naming_conventions.md)",
+        "14. [Änderungshinweise & Best Practices](12_change_guidance/change_guidance.md)",
         "",
         "---",
         f"*Generiert mit Power BI Documentation Generator*",
@@ -388,6 +392,183 @@ def gen_change_log(p: Project) -> str:
     return "\n".join(lines)
 
 
+def gen_permissions(p: Project) -> str:
+    perm = p.permissions
+    lines = [
+        "# Berechtigungen",
+        "",
+        "## Best Practices",
+        "",
+        "- Verwende Workspace-Rollen statt individueller Freigaben",
+        "- Setze Row-Level Security (RLS) fuer sensible Daten ein",
+        "- Pruefe regelmaessig die Zugriffsrechte (mindestens quartalsweise)",
+        "- Dokumentiere alle Berechtigungsaenderungen im Aenderungsprotokoll",
+        "- Nutze Sicherheitsgruppen statt Einzelpersonen fuer Berechtigungen",
+        "",
+        "## Workspace-Rollen",
+        "",
+        perm.workspace_roles or "*Nicht dokumentiert.*",
+        "",
+        "## Row-Level Security (RLS)",
+        "",
+        perm.rls_details or "*Nicht konfiguriert / dokumentiert.*",
+        "",
+        "## Freigabe & Sharing",
+        "",
+        perm.sharing_permissions or "*Nicht dokumentiert.*",
+        "",
+        "## Datensensitivität / Klassifizierung",
+        "",
+        perm.data_sensitivity or "*Nicht dokumentiert.*",
+        "",
+        "## Erforderliche Rollen für Änderungen",
+        "",
+        perm.required_roles_for_changes or "*Nicht dokumentiert.*",
+        "",
+        "## Service Principal / App-Registrierung",
+        "",
+        perm.service_principal or "*Nicht konfiguriert.*",
+        "",
+    ]
+    if perm.notes:
+        lines += ["## Anmerkungen", "", perm.notes, ""]
+    return "\n".join(lines)
+
+
+def gen_storage(p: Project) -> str:
+    st = p.storage_structure
+    lines = [
+        "# Ablagestruktur",
+        "",
+        "## Best Practices",
+        "",
+        "- Speichere PBIX-Dateien nie auf lokalen Laufwerken ohne Backup",
+        "- Nutze SharePoint/OneDrive oder ein Git-Repository fuer Versionierung",
+        "- Trenne Entwicklungs-, Test- und Produktionsumgebungen",
+        "- Verwende Deployment Pipelines fuer kontrollierte Releases",
+        "- Erstelle regelmaessige Backups der PBIX-Datei vor groesseren Aenderungen",
+        "",
+        "## PBIX-Speicherort",
+        "",
+        st.pbix_location or "*Nicht dokumentiert.*",
+        "",
+        "## Power BI Workspace",
+        "",
+        st.workspace_name or "*Nicht dokumentiert.*",
+        "",
+        "## SharePoint- / OneDrive-Pfad",
+        "",
+        st.sharepoint_path or "*Nicht dokumentiert.*",
+        "",
+        "## Data Gateway",
+        "",
+        st.data_gateway or "*Nicht konfiguriert.*",
+        "",
+        "## Backup-Strategie / Versionierung",
+        "",
+        st.backup_strategy or "*Nicht dokumentiert.*",
+        "",
+        "## Deployment Pipeline",
+        "",
+        st.deployment_pipeline or "*Nicht konfiguriert.*",
+        "",
+        "## Git-Repository",
+        "",
+        st.repo_url or "*Nicht konfiguriert.*",
+        "",
+    ]
+    if st.notes:
+        lines += ["## Anmerkungen", "", st.notes, ""]
+    return "\n".join(lines)
+
+
+def gen_naming_conventions(p: Project) -> str:
+    nc = p.naming_conventions
+    lines = [
+        "# Namenskonzept",
+        "",
+        "## Best Practices",
+        "",
+        "- Verwende konsistente, sprechende Benennungen in einer einheitlichen Sprache",
+        "- Nutze Praefix-Konventionen (z.B. `_` fuer Hilfsmeasures, `dim_` fuer Dimensionen)",
+        "- Vermeide Leerzeichen und Sonderzeichen in technischen Namen",
+        "- Gruppiere Measures in Display Folders nach Themengebiet",
+        "- Dokumentiere alle Abweichungen von den Namensregeln",
+        "",
+        "## Allgemeine Regeln",
+        "",
+        nc.general_rules or "*Nicht dokumentiert.*",
+        "",
+        "## Measures",
+        "",
+        nc.measures or "*Nicht dokumentiert.*",
+        "",
+        "## Tabellen",
+        "",
+        nc.tables or "*Nicht dokumentiert.*",
+        "",
+        "## Spalten",
+        "",
+        nc.columns or "*Nicht dokumentiert.*",
+        "",
+        "## Berichtsseiten",
+        "",
+        nc.pages or "*Nicht dokumentiert.*",
+        "",
+        "## Berichte / Dateien",
+        "",
+        nc.reports or "*Nicht dokumentiert.*",
+        "",
+        "## Power Queries",
+        "",
+        nc.queries or "*Nicht dokumentiert.*",
+        "",
+    ]
+    if nc.notes:
+        lines += ["## Anmerkungen", "", nc.notes, ""]
+    return "\n".join(lines)
+
+
+def gen_change_guidance(p: Project) -> str:
+    cg = p.change_guidance
+    lines = [
+        "# Änderungshinweise & Best Practices",
+        "",
+        "## Best Practices für Änderungen am Bericht",
+        "",
+        "- Erstelle immer ein Backup der PBIX-Datei vor Änderungen",
+        "- Teste Änderungen in einer Entwicklungsumgebung vor dem Deployment",
+        "- Dokumentiere jede Änderung im Änderungsprotokoll",
+        "- Stimme grössere Änderungen vorher mit dem Eigentümer ab",
+        "- Prüfe nach Änderungen alle betroffenen Measures und Visuals",
+        "- Validiere die Datenaktualisierung nach Modell-Änderungen",
+        "",
+        "## Vor Änderungen zu beachten",
+        "",
+        cg.before_changes or "*Nicht dokumentiert.*",
+        "",
+        "## Test-Checkliste",
+        "",
+        cg.testing_checklist or "*Nicht dokumentiert.*",
+        "",
+        "## Deployment-Schritte",
+        "",
+        cg.deployment_steps or "*Nicht dokumentiert.*",
+        "",
+        "## Rollback-Plan",
+        "",
+        cg.rollback_plan or "*Nicht dokumentiert.*",
+        "",
+        "## Ansprechpartner",
+        "",
+        cg.contact_persons or "*Nicht dokumentiert.*",
+        "",
+    ]
+    if cg.notes:
+        lines += ["## Anmerkungen", "", cg.notes, ""]
+    return "\n".join(lines)
+
+
 # ===================================================================
 # Main generator entry point
 # ===================================================================
@@ -407,6 +588,10 @@ def generate_docs(project: Project, output_dir: Path | None = None) -> Path:
         root / "07_governance" / "refresh_gateway_rls.md": gen_refresh_gateway_rls(project),
         root / "07_governance" / "assumptions_limitations.md": gen_assumptions_limitations(project),
         root / "08_change_log" / "change_log.md": gen_change_log(project),
+        root / "09_permissions" / "permissions.md": gen_permissions(project),
+        root / "10_storage" / "storage.md": gen_storage(project),
+        root / "11_naming" / "naming_conventions.md": gen_naming_conventions(project),
+        root / "12_change_guidance" / "change_guidance.md": gen_change_guidance(project),
     }
     for fpath, content in files.items():
         _write(fpath, content)

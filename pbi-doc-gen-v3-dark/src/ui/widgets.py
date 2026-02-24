@@ -397,7 +397,11 @@ class Sidebar(QWidget):
         ("📊", "Berichtsseiten"),
         ("🛡️", "Governance"),
         ("📝", "Änderungen"),
-        ("👁️", "Vorschau"),
+        ("�", "Berechtigungen"),
+        ("📁", "Ablagestruktur"),
+        ("🏷️", "Namenskonzept"),
+        ("🔄", "Änderungshinweise"),
+        ("�👁️", "Vorschau"),
     ]
 
     def __init__(self, parent=None):

@@ -22,6 +22,29 @@ from reportlab.platypus import (
 from .models import Project, CIBranding
 
 
+# ── Section keys for modular PDF export ─────────────────────────
+PDF_SECTIONS = [
+    ("overview",       "1. Uebersicht"),
+    ("kpis",           "2. KPIs"),
+    ("data_sources",   "3. Datenquellen"),
+    ("power_query",    "4. Power Query"),
+    ("data_model",     "5. Datenmodell"),
+    ("measures",       "6. Measures"),
+    ("report_pages",   "7. Berichtsseiten"),
+    ("governance",     "8. Governance"),
+    ("assumptions",    "9. Annahmen"),
+    ("change_log",     "10. Aenderungsprotokoll"),
+    ("permissions",    "11. Berechtigungen"),
+    ("storage",        "12. Ablagestruktur"),
+    ("naming",         "13. Namenskonzept"),
+    ("change_guidance","14. Aenderungshinweise"),
+]
+
+def get_pdf_section_labels() -> list[tuple[str, str]]:
+    """Return list of (key, label) tuples for section selection UI."""
+    return list(PDF_SECTIONS)
+
+
 def _hex(c):
     try: return colors.HexColor(c)
     except: return colors.HexColor("#1B3A5C")
@@ -88,7 +111,9 @@ def _hr():
                        spaceBefore=3*mm, spaceAfter=3*mm)
 
 
-def generate_pdf(project, output_path):
+def generate_pdf(project, output_path, sections=None):
+    """Generate PDF report. If *sections* is a set of keys, only those are included.
+    If None, all sections are included."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ci = project.ci_branding
@@ -100,7 +125,7 @@ def generate_pdf(project, output_path):
         title="{} - Dokumentation".format(project.meta.report_name),
         author=project.meta.author)
 
-    footer_text = ci.footer_text or "Power BI Documentation Generator"
+    footer_text = ci.footer_text or "Dokumentiert von Felix Tischler"
     header_text = ci.header_text
 
     def _footer(canvas, doc_obj):
@@ -163,11 +188,15 @@ def generate_pdf(project, output_path):
 
     # ── TOC ──
     story.append(Paragraph("Inhaltsverzeichnis", ss["H1"]))
-    for item in ["1. Uebersicht", "2. KPIs", "3. Datenquellen", "4. Power Query",
-                  "5. Datenmodell", "6. Measures", "7. Berichtsseiten", "8. Governance",
-                  "9. Annahmen", "10. Aenderungsprotokoll"]:
-        story.append(Paragraph(item, ss["Body"]))
+    _all = sections is None
+    for key, label in PDF_SECTIONS:
+        if _all or key in sections:
+            story.append(Paragraph(label, ss["Body"]))
     story.append(PageBreak())
+
+    # Helper to check if section is enabled
+    def _sec(key):
+        return sections is None or key in sections
 
     # Helper to add screenshot if exists
     def _add_screenshot(path):
@@ -184,120 +213,200 @@ def generate_pdf(project, output_path):
 
     # ── SECTIONS ──
     # 1. Overview
-    story.append(Paragraph("1. Uebersicht", ss["H1"]))
-    if project.meta.short_description:
-        story.append(Paragraph(_esc(project.meta.short_description), ss["Body"]))
-    if project.meta.powerbi_service_url:
-        story.append(Paragraph("<b>Power BI:</b> {}".format(_esc(project.meta.powerbi_service_url)), ss["Body"]))
-    if project.meta.environments:
-        er = [[e.name, e.workspace, e.url] for e in project.meta.environments]
-        story.append(_make_table(["Umgebung","Arbeitsbereich","URL"], er, [30*mm,50*mm,pw-84*mm], ci))
+    if _sec("overview"):
+        story.append(Paragraph("1. Uebersicht", ss["H1"]))
+        if project.meta.short_description:
+            story.append(Paragraph(_esc(project.meta.short_description), ss["Body"]))
+        if project.meta.powerbi_service_url:
+            story.append(Paragraph("<b>Power BI:</b> {}".format(_esc(project.meta.powerbi_service_url)), ss["Body"]))
+        if project.meta.environments:
+            er = [[e.name, e.workspace, e.url] for e in project.meta.environments]
+            story.append(_make_table(["Umgebung","Arbeitsbereich","URL"], er, [30*mm,50*mm,pw-84*mm], ci))
 
     # 2. KPIs
-    story.append(Paragraph("2. KPIs", ss["H1"]))
-    if project.kpis:
-        kr = [[str(i),_esc(k.name),_esc(k.granularity),_esc(k.business_description)] for i,k in enumerate(project.kpis,1)]
-        story.append(_make_table(["#","Name","Gran.","Beschreibung"], kr, [10*mm,35*mm,30*mm,pw-79*mm], ci))
-        for k in project.kpis:
-            story.extend([Paragraph(_esc(k.name), ss["H2"]),
-                Paragraph("<b>Beschreibung:</b> {}".format(_esc(k.business_description)), ss["Body"]),
-                Paragraph("<b>Technik:</b> {}".format(_esc(k.technical_definition)), ss["Body"]),
-                _hr()])
-    else:
-        story.append(Paragraph("<i>Keine KPIs.</i>", ss["Body"]))
+    if _sec("kpis"):
+        story.append(Paragraph("2. KPIs", ss["H1"]))
+        if project.kpis:
+            kr = [[str(i),_esc(k.name),_esc(k.granularity),_esc(k.business_description)] for i,k in enumerate(project.kpis,1)]
+            story.append(_make_table(["#","Name","Gran.","Beschreibung"], kr, [10*mm,35*mm,30*mm,pw-79*mm], ci))
+            for k in project.kpis:
+                story.extend([Paragraph(_esc(k.name), ss["H2"]),
+                    Paragraph("<b>Beschreibung:</b> {}".format(_esc(k.business_description)), ss["Body"]),
+                    Paragraph("<b>Technik:</b> {}".format(_esc(k.technical_definition)), ss["Body"]),
+                    _hr()])
+        else:
+            story.append(Paragraph("<i>Keine KPIs.</i>", ss["Body"]))
 
     # 3. Data Sources
-    story.append(Paragraph("3. Datenquellen", ss["H1"]))
-    if project.data_sources:
-        dr = [[_esc(s.name),_esc(s.source_type),_esc(s.connection_info),_esc(s.refresh_cadence),
-               _esc(s.gateway_name) if s.gateway_required else "-"] for s in project.data_sources]
-        story.append(_make_table(["Name","Typ","Verbindung","Refresh","Gateway"], dr,
-                                  [30*mm,22*mm,45*mm,30*mm,pw-131*mm], ci))
-    else:
-        story.append(Paragraph("<i>Keine Quellen.</i>", ss["Body"]))
+    if _sec("data_sources"):
+        story.append(Paragraph("3. Datenquellen", ss["H1"]))
+        if project.data_sources:
+            dr = [[_esc(s.name),_esc(s.source_type),_esc(s.connection_info),_esc(s.refresh_cadence),
+                   _esc(s.gateway_name) if s.gateway_required else "-"] for s in project.data_sources]
+            story.append(_make_table(["Name","Typ","Verbindung","Refresh","Gateway"], dr,
+                                      [30*mm,22*mm,45*mm,30*mm,pw-131*mm], ci))
+        else:
+            story.append(Paragraph("<i>Keine Quellen.</i>", ss["Body"]))
 
     # 4. Power Query
-    story.append(Paragraph("4. Power Query (M)", ss["H1"]))
-    for q in project.power_queries:
-        story.extend([Paragraph(_esc(q.query_name), ss["H2"]),
-            Paragraph("<b>Zweck:</b> {}".format(_esc(q.purpose)), ss["Body"])])
-        if q.m_code:
-            story.append(Paragraph("<b>M-Code:</b>", ss["Body"]))
-            story.append(Preformatted(q.m_code, ss["CodeBlock"]))
-        story.append(_hr())
-    if not project.power_queries:
-        story.append(Paragraph("<i>Keine Abfragen.</i>", ss["Body"]))
+    if _sec("power_query"):
+        story.append(Paragraph("4. Power Query (M)", ss["H1"]))
+        for q in project.power_queries:
+            story.extend([Paragraph(_esc(q.query_name), ss["H2"]),
+                Paragraph("<b>Zweck:</b> {}".format(_esc(q.purpose)), ss["Body"])])
+            if q.m_code:
+                story.append(Paragraph("<b>M-Code:</b>", ss["Body"]))
+                story.append(Preformatted(q.m_code, ss["CodeBlock"]))
+            story.append(_hr())
+        if not project.power_queries:
+            story.append(Paragraph("<i>Keine Abfragen.</i>", ss["Body"]))
 
     # 5. Data Model
-    story.append(Paragraph("5. Datenmodell", ss["H1"]))
-    dm = project.data_model
-    if dm.tables:
-        tr = [[_esc(t.name),_esc(t.table_type),_esc(t.keys),_esc(t.description)] for t in dm.tables]
-        story.append(_make_table(["Tabelle","Typ","Schluessel","Beschreibung"], tr,
-                                  [35*mm,25*mm,40*mm,pw-104*mm], ci))
-    if dm.relationships:
-        rr = [["{}.{}".format(r.from_table,r.from_column),"{}.{}".format(r.to_table,r.to_column),
-               r.cardinality,r.filter_direction] for r in dm.relationships]
-        story.append(_make_table(["Von","Nach","Kard.","Filter"], rr, [40*mm,40*mm,30*mm,pw-114*mm], ci))
-    if dm.date_logic_notes:
-        story.extend([Paragraph("Datumslogik", ss["H2"]), Paragraph(_esc(dm.date_logic_notes), ss["Body"])])
-    for sp in dm.screenshot_paths:
-        _add_screenshot(sp)
-    if not dm.tables and not dm.relationships:
-        story.append(Paragraph("<i>Kein Modell.</i>", ss["Body"]))
+    if _sec("data_model"):
+        story.append(Paragraph("5. Datenmodell", ss["H1"]))
+        dm = project.data_model
+        if dm.tables:
+            tr = [[_esc(t.name),_esc(t.table_type),_esc(t.keys),_esc(t.description)] for t in dm.tables]
+            story.append(_make_table(["Tabelle","Typ","Schluessel","Beschreibung"], tr,
+                                      [35*mm,25*mm,40*mm,pw-104*mm], ci))
+        if dm.relationships:
+            rr = [["{}.{}".format(r.from_table,r.from_column),"{}.{}".format(r.to_table,r.to_column),
+                   r.cardinality,r.filter_direction] for r in dm.relationships]
+            story.append(_make_table(["Von","Nach","Kard.","Filter"], rr, [40*mm,40*mm,30*mm,pw-114*mm], ci))
+        if dm.date_logic_notes:
+            story.extend([Paragraph("Datumslogik", ss["H2"]), Paragraph(_esc(dm.date_logic_notes), ss["Body"])])
+        for sp in dm.screenshot_paths:
+            _add_screenshot(sp)
+        if not dm.tables and not dm.relationships:
+            story.append(Paragraph("<i>Kein Modell.</i>", ss["Body"]))
 
     # 6. Measures
-    story.append(Paragraph("6. Measures (DAX)", ss["H1"]))
-    if project.measures:
-        mr = [[str(i),_esc(m.name),_esc(m.display_folder),_esc(m.description)] for i,m in enumerate(project.measures,1)]
-        story.append(_make_table(["#","Name","Ordner","Beschreibung"], mr, [10*mm,40*mm,30*mm,pw-84*mm], ci))
-        story.append(Spacer(1, 4*mm))
-        for ms in project.measures:
-            story.extend([Paragraph(_esc(ms.name), ss["H2"]),
-                Paragraph("<b>Beschreibung:</b> {}".format(_esc(ms.description)), ss["Body"]),
-                Paragraph("<b>DAX:</b>", ss["Body"]),
-                Preformatted(ms.dax_code, ss["CodeBlock"]), _hr()])
-    else:
-        story.append(Paragraph("<i>Keine Measures.</i>", ss["Body"]))
+    if _sec("measures"):
+        story.append(Paragraph("6. Measures (DAX)", ss["H1"]))
+        if project.measures:
+            mr = [[str(i),_esc(m.name),_esc(m.display_folder),_esc(m.description)] for i,m in enumerate(project.measures,1)]
+            story.append(_make_table(["#","Name","Ordner","Beschreibung"], mr, [10*mm,40*mm,30*mm,pw-84*mm], ci))
+            story.append(Spacer(1, 4*mm))
+            for ms in project.measures:
+                story.extend([Paragraph(_esc(ms.name), ss["H2"]),
+                    Paragraph("<b>Beschreibung:</b> {}".format(_esc(ms.description)), ss["Body"]),
+                    Paragraph("<b>DAX:</b>", ss["Body"]),
+                    Preformatted(ms.dax_code, ss["CodeBlock"]), _hr()])
+        else:
+            story.append(Paragraph("<i>Keine Measures.</i>", ss["Body"]))
 
     # 7. Report Pages
-    story.append(Paragraph("7. Berichtsseiten", ss["H1"]))
-    for pg in project.report_pages:
-        story.extend([Paragraph(_esc(pg.page_name), ss["H2"]),
-            Paragraph("<b>Zweck:</b> {}".format(_esc(pg.purpose)), ss["Body"])])
-        if pg.visuals:
-            vr = [[_esc(v.name),_esc(v.description)] for v in pg.visuals]
-            story.append(_make_table(["Visual","Beschreibung"], vr, [45*mm,pw-49*mm], ci))
-        sp = getattr(pg, 'screenshot_path', '')
-        _add_screenshot(sp)
-        story.append(_hr())
-    if not project.report_pages:
-        story.append(Paragraph("<i>Keine Seiten.</i>", ss["Body"]))
+    if _sec("report_pages"):
+        story.append(Paragraph("7. Berichtsseiten", ss["H1"]))
+        for pg in project.report_pages:
+            story.extend([Paragraph(_esc(pg.page_name), ss["H2"]),
+                Paragraph("<b>Zweck:</b> {}".format(_esc(pg.purpose)), ss["Body"])])
+            if pg.visuals:
+                vr = [[_esc(v.name),_esc(v.description)] for v in pg.visuals]
+                story.append(_make_table(["Visual","Beschreibung"], vr, [45*mm,pw-49*mm], ci))
+            sp = getattr(pg, 'screenshot_path', '')
+            _add_screenshot(sp)
+            story.append(_hr())
+        if not project.report_pages:
+            story.append(Paragraph("<i>Keine Seiten.</i>", ss["Body"]))
 
     # 8. Governance
-    story.append(Paragraph("8. Governance", ss["H1"]))
-    gov = project.governance
-    for title, val in [("Aktualisierung", gov.refresh_schedule), ("Monitoring", gov.monitoring_notes),
-                        ("RLS", gov.rls_notes), ("Performance", gov.performance_notes)]:
-        story.extend([Paragraph(title, ss["H2"]),
-            Paragraph(_esc(val) if val else "<i>Nicht dokumentiert.</i>", ss["Body"])])
+    if _sec("governance"):
+        story.append(Paragraph("8. Governance", ss["H1"]))
+        gov = project.governance
+        for title, val in [("Aktualisierung", gov.refresh_schedule), ("Monitoring", gov.monitoring_notes),
+                            ("RLS", gov.rls_notes), ("Performance", gov.performance_notes)]:
+            story.extend([Paragraph(title, ss["H2"]),
+                Paragraph(_esc(val) if val else "<i>Nicht dokumentiert.</i>", ss["Body"])])
 
     # 9. Assumptions
-    story.append(Paragraph("9. Annahmen und Einschraenkungen", ss["H1"]))
-    story.extend([Paragraph("Annahmen", ss["H2"]),
-        Paragraph(_esc(gov.assumptions) if gov.assumptions else "<i>Keine.</i>", ss["Body"]),
-        Paragraph("Einschraenkungen", ss["H2"]),
-        Paragraph(_esc(gov.limitations) if gov.limitations else "<i>Keine.</i>", ss["Body"])])
+    if _sec("assumptions"):
+        story.append(Paragraph("9. Annahmen und Einschraenkungen", ss["H1"]))
+        gov = project.governance
+        story.extend([Paragraph("Annahmen", ss["H2"]),
+            Paragraph(_esc(gov.assumptions) if gov.assumptions else "<i>Keine.</i>", ss["Body"]),
+            Paragraph("Einschraenkungen", ss["H2"]),
+            Paragraph(_esc(gov.limitations) if gov.limitations else "<i>Keine.</i>", ss["Body"])])
 
     # 10. Change Log
-    story.append(Paragraph("10. Aenderungsprotokoll", ss["H1"]))
-    if project.change_log:
-        cr = [[_esc(c.version),c.date,_esc(c.description),_esc(c.author),_esc(c.impact),_esc(c.ticket_link)]
-              for c in project.change_log]
-        story.append(_make_table(["Ver.","Datum","Beschreibung","Autor","Impact","Ticket"], cr,
-                                  [16*mm,20*mm,pw-104*mm,20*mm,20*mm,24*mm], ci))
-    else:
-        story.append(Paragraph("<i>Keine Eintraege.</i>", ss["Body"]))
+    if _sec("change_log"):
+        story.append(Paragraph("10. Aenderungsprotokoll", ss["H1"]))
+        if project.change_log:
+            cr = [[_esc(c.version),c.date,_esc(c.description),_esc(c.author),_esc(c.impact),_esc(c.ticket_link)]
+                  for c in project.change_log]
+            story.append(_make_table(["Ver.","Datum","Beschreibung","Autor","Impact","Ticket"], cr,
+                                      [16*mm,20*mm,pw-104*mm,20*mm,20*mm,24*mm], ci))
+        else:
+            story.append(Paragraph("<i>Keine Eintraege.</i>", ss["Body"]))
+
+    # 11. Permissions
+    if _sec("permissions"):
+        story.append(Paragraph("11. Berechtigungen", ss["H1"]))
+        perm = project.permissions
+        for title, val in [
+            ("Workspace-Rollen", perm.workspace_roles),
+            ("Row-Level Security", perm.rls_details),
+            ("Freigabe / Sharing", perm.sharing_permissions),
+            ("Datensensitivitaet", perm.data_sensitivity),
+            ("Rollen fuer Aenderungen", perm.required_roles_for_changes),
+            ("Service Principal", perm.service_principal),
+        ]:
+            story.extend([Paragraph(title, ss["H2"]),
+                Paragraph(_esc(val) if val else "<i>Nicht dokumentiert.</i>", ss["Body"])])
+        if perm.notes:
+            story.extend([Paragraph("Anmerkungen", ss["H2"]), Paragraph(_esc(perm.notes), ss["Body"])])
+
+    # 12. Storage
+    if _sec("storage"):
+        story.append(Paragraph("12. Ablagestruktur", ss["H1"]))
+        st = project.storage_structure
+        for title, val in [
+            ("PBIX-Speicherort", st.pbix_location),
+            ("Power BI Workspace", st.workspace_name),
+            ("SharePoint / OneDrive", st.sharepoint_path),
+            ("Data Gateway", st.data_gateway),
+            ("Backup-Strategie", st.backup_strategy),
+            ("Deployment Pipeline", st.deployment_pipeline),
+            ("Git-Repository", st.repo_url),
+        ]:
+            story.extend([Paragraph(title, ss["H2"]),
+                Paragraph(_esc(val) if val else "<i>Nicht dokumentiert.</i>", ss["Body"])])
+        if st.notes:
+            story.extend([Paragraph("Anmerkungen", ss["H2"]), Paragraph(_esc(st.notes), ss["Body"])])
+
+    # 13. Naming Conventions
+    if _sec("naming"):
+        story.append(Paragraph("13. Namenskonzept", ss["H1"]))
+        nc = project.naming_conventions
+        for title, val in [
+            ("Allgemeine Regeln", nc.general_rules),
+            ("Measures", nc.measures),
+            ("Tabellen", nc.tables),
+            ("Spalten", nc.columns),
+            ("Berichtsseiten", nc.pages),
+            ("Berichte / Dateien", nc.reports),
+            ("Power Queries", nc.queries),
+        ]:
+            story.extend([Paragraph(title, ss["H2"]),
+                Paragraph(_esc(val) if val else "<i>Nicht dokumentiert.</i>", ss["Body"])])
+        if nc.notes:
+            story.extend([Paragraph("Anmerkungen", ss["H2"]), Paragraph(_esc(nc.notes), ss["Body"])])
+
+    # 14. Change Guidance
+    if _sec("change_guidance"):
+        story.append(Paragraph("14. Aenderungshinweise &amp; Best Practices", ss["H1"]))
+        cg = project.change_guidance
+        for title, val in [
+            ("Vor Aenderungen beachten", cg.before_changes),
+            ("Test-Checkliste", cg.testing_checklist),
+            ("Deployment-Schritte", cg.deployment_steps),
+            ("Rollback-Plan", cg.rollback_plan),
+            ("Ansprechpartner", cg.contact_persons),
+        ]:
+            story.extend([Paragraph(title, ss["H2"]),
+                Paragraph(_esc(val) if val else "<i>Nicht dokumentiert.</i>", ss["Body"])])
+        if cg.notes:
+            story.extend([Paragraph("Anmerkungen", ss["H2"]), Paragraph(_esc(cg.notes), ss["Body"])])
 
     doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return output_path
